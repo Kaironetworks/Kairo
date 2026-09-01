@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: kairo-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: kairo
+      POSTGRES_USER: kairo
+      POSTGRES_PASSWORD: kairo_dev_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - kairo_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kairo -d kairo"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    container_name: kairo-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: kairoadmin
+      MINIO_ROOT_PASSWORD: kairo_minio_password
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - kairo_minio:/data
+
+volumes:
+  kairo_postgres:
+  kairo_minio:

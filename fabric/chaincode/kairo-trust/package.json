@@ -1,0 +1,7 @@
+{
+  "name": "kairo-trust-chaincode",
+  "version": "1.0.0",
+  "main": "chaincode.js",
+  "engines": { "node": ">=18" },
+  "dependencies": { "fabric-contract-api": "^2.5.7", "fabric-shim": "^2.5.7" }
+}
