@@ -21,7 +21,7 @@ from .schemas import (
     VersionOut, AuditOut, SearchResultOut,
 )
 from .security import current_user, create_token, verify_password
-from .storage import ensure_bucket, put_bytes, get_bytes
+from .storage import ensure_bucket, put_bytes, get_bytes, delete_bytes
 from .authorization import Permission, require_permission, has_permission
 from .trust_ledger import ensure_ledger, anchor_audit_event, list_blocks, verify_ledger, document_anchors
 from .custody import build_custody_record
@@ -383,26 +383,26 @@ async def upload_document(
         f"v1/{file.filename}"
     )
 
-    put_bytes(
-        key,
-        data,
-        file.content_type or "application/octet-stream",
-    )
-
-    db.add(
-        DocumentVersion(
+    try:
+        put_bytes(key, data, file.content_type or "application/octet-stream")
+        db.add(DocumentVersion(
             document_id=doc.id,
             version=1,
             object_key=key,
-            original_filename=file.filename,
+            original_filename=file.filename or "evidence",
             content_type=file.content_type or "application/octet-stream",
             size_bytes=len(data),
             sha256=sha,
             uploaded_by=user.id,
-        )
-    )
-
-    db.commit()
+        ))
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        try:
+            delete_bytes(key)
+        except Exception:
+            pass
+        raise HTTPException(503, "Evidence storage could not be committed. No document was registered.") from exc
 
     audit(
         db,
@@ -466,26 +466,29 @@ async def create_document_version(
         f"v{next_version}/{file.filename}"
     )
 
-    put_bytes(
-        key,
-        data,
-        file.content_type or "application/octet-stream",
-    )
-
-    version = DocumentVersion(
-        document_id=doc.id,
-        version=next_version,
-        object_key=key,
-        original_filename=file.filename,
-        content_type=file.content_type or "application/octet-stream",
-        size_bytes=len(data),
-        sha256=sha,
-        uploaded_by=user.id,
-    )
-    db.add(version)
-    doc.current_version = next_version
-    db.commit()
-    db.refresh(version)
+    try:
+        put_bytes(key, data, file.content_type or "application/octet-stream")
+        version = DocumentVersion(
+            document_id=doc.id,
+            version=next_version,
+            object_key=key,
+            original_filename=file.filename or "evidence",
+            content_type=file.content_type or "application/octet-stream",
+            size_bytes=len(data),
+            sha256=sha,
+            uploaded_by=user.id,
+        )
+        db.add(version)
+        doc.current_version = next_version
+        db.commit()
+        db.refresh(version)
+    except Exception as exc:
+        db.rollback()
+        try:
+            delete_bytes(key)
+        except Exception:
+            pass
+        raise HTTPException(503, "Evidence version could not be committed. The registered version was not changed.") from exc
 
     audit(
         db,

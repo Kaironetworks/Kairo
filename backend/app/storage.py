@@ -28,6 +28,9 @@ def put_bytes(key: str, data: bytes, content_type: str):
         ContentType=content_type or "application/octet-stream",
     )
 
+def delete_bytes(key: str):
+    client().delete_object(Bucket=settings.minio_bucket, Key=key)
+
 def get_bytes(key: str) -> bytes:
     obj = client().get_object(Bucket=settings.minio_bucket, Key=key)
     return obj["Body"].read()

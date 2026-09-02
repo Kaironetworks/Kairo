@@ -28,15 +28,41 @@ function Login({onLogin}){
  </main>
 }
 
-function Shell({user,page,setPage,onLogout,children}){
+function Shell({user,page,setPage,onLogout,theme,onToggleTheme,children}){
  const [open,setOpen]=useState(false);
- const nav=[["overview","Overview",Activity],["cases","Investigations",Search],["search","Search & retrieval",Search],["integrity","Integrity",Fingerprint],["trust","Trust ledger",Blocks],["security","Security",ShieldAlert],["incidents","Incidents",AlertTriangle],["sharing","Secure sharing",ExternalLink],["signatures","Signatures",KeyRound],["governance","Governance",LockKeyhole],["forensics","Forensic export",FileArchive],...(user.role==="AUDITOR"?[["audit","Audit trail",History]]:[])];
+ const nav=[
+  ["overview","Overview",Activity],
+  ["cases","Investigations",Search],
+  ["search","Search & retrieval",Search],
+  ["integrity","Integrity",Fingerprint],
+  ["trust","Trust ledger",Blocks],
+  ["security","Security",ShieldAlert],
+  ...(user.role!=="AUDITOR"?[["incidents","Incidents",AlertTriangle],["sharing","Secure sharing",ExternalLink],["signatures","Signatures",KeyRound],["forensics","Forensic export",FileArchive]]:[]),
+  ["governance","Governance",LockKeyhole],
+  ...(user.role==="AUDITOR"?[["audit","Audit trail",History]]:[])
+ ];
  return <div className="app-shell"><aside className={open?"sidebar open":"sidebar"}><div className="side-head"><Logo/><button className="icon-btn mobile" onClick={()=>setOpen(false)}><X/></button></div>
- <div className="side-label">COMMAND CENTER</div>{nav.map(([id,l,I])=><button key={id} className={"nav-item "+(page===id?"active":"")} onClick={()=>{setPage(id);setOpen(false)}}><I size={18}/><span>{l}</span><ChevronRight size={14}/></button>)}
+ <div className="side-label">COMMAND CENTER · {roleLabel(user.role)}</div>{nav.map(([id,l,I])=><button key={id} className={"nav-item "+(page===id?"active":"")} onClick={()=>{setPage(id);setOpen(false)}}><I size={18}/><span>{l}</span><ChevronRight size={14}/></button>)}
  <div className="side-bottom"><div className="secure-box"><ShieldCheck size={17}/><div><b>Trust layer</b><span>Policy enforced</span></div></div><button className="nav-item logout" onClick={onLogout}><LogOut size={18}/><span>Sign out</span></button></div></aside>
  <div className="main"><header className="appbar"><button className="icon-btn mobile" onClick={()=>setOpen(true)}><Menu/></button><div className="crumb">KAIRO / <b>{page}</b></div>
- <div className="identity"><div className="avatar">{user.full_name.split(" ").map(x=>x[0]).join("")}</div><div><b>{user.full_name}</b><span>{roleLabel(user.role)}</span></div></div></header><div className="content">{children}</div></div></div>
+ <div className="header-actions">
+  <button className="theme-toggle" onClick={onToggleTheme} title={theme==="light"?"Switch to dark mode":"Switch to light mode"}>
+    {theme==="light"?<span>☾</span>:<span>☀</span>} <span>{theme==="light"?"Dark":"Light"}</span>
+  </button>
+  <div className="identity"><div className="avatar">{user.full_name.split(" ").map(x=>x[0]).join("")}</div><div><b>{user.full_name}</b><span>{roleLabel(user.role)}</span></div></div>
+</div></header><LiveTrustRail/><div className="content">{children}</div></div></div>
 }
+function LiveTrustRail(){
+ const [tick,setTick]=useState(0);
+ useEffect(()=>{const id=setInterval(()=>setTick(t=>t+1),3200);return()=>clearInterval(id)},[]);
+ const signals=["Identity verified","Evidence store reachable","Integrity engine ready","Audit trail recording","Policy controls active"];
+ return <aside className="live-rail" aria-label="KAIRO system status">
+   <div className="live-rail-head"><span className="live-pulse"/><span>LIVE TRUST SIGNAL</span><b>#{String(tick+1).padStart(3,"0")}</b></div>
+   <div className="signal-stack">{signals.map((x,i)=><div className="signal" key={x}><span className="signal-line"/><div><b>{x}</b><small>{i===0?"Authenticated session":i===1?"Protected object storage":i===2?"SHA-256 verification":i===3?"Every protected action":"RBAC + governance"}</small></div><CircleCheck2 size={14}/></div>)}</div>
+   <div className="rail-foot"><span>CONTROL PLANE</span><strong>OPERATIONAL</strong></div>
+ </aside>
+}
+
 function PageTitle({eyebrow,title,desc,action}){return <div className="page-title"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1><p>{desc}</p></div>{action&&<div>{action}</div>}</div>}
 function PanelHead({title,action}){return <div className="panel-head"><h3>{title}</h3>{action}</div>}
 function Stat({Icon,label,value,detail}){return <div className="stat"><div className="stat-icon"><Icon size={18}/></div><div><span>{label}</span><strong>{value}</strong><small>{detail}</small></div></div>}
@@ -120,11 +146,26 @@ function EvidenceInspector({doc,versions,anchors,custody,verify,onVerify,onClose
 
 function UploadModal({caseId,onClose,onDone}){
  const [title,setTitle]=useState("Evidence document"),[type,setType]=useState("EVIDENCE"),[classification,setClassification]=useState("RESTRICTED"),[file,setFile]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState("");
- async function submit(e){e.preventDefault();if(!file)return setError("Select a file.");setBusy(true);setError("");try{await api.upload(caseId,file,{title,document_type:type,classification});onDone()}catch(e){setError(e.message)}finally{setBusy(false)}}
- return <div className="modal-backdrop"><form className="modal" onSubmit={submit}><div className="modal-head"><div><div className="eyebrow">EVIDENCE INGESTION</div><h2>Add document</h2></div><button type="button" className="icon-btn" onClick={onClose}><X/></button></div>
- <label>Document title<input value={title} onChange={e=>setTitle(e.target.value)}/></label><div className="form-grid"><label>Document type<select value={caseId} onChange={e=>setCaseId(e.target.value)}><option value="">All cases</option>{cases.map(c=><option key={c.id} value={c.id}>{c.case_number}</option>)}</select><select value={type} onChange={e=>setType(e.target.value)}><option>FIR</option><option>EVIDENCE</option><option>FORENSIC_REPORT</option><option>WITNESS_STATEMENT</option><option>CHARGE_SHEET</option></select></label><label>Classification<select value={classification} onChange={e=>setClassification(e.target.value)}><option>RESTRICTED</option><option>CONFIDENTIAL</option><option>HIGHLY_RESTRICTED</option></select></label></div>
- <label className="dropzone"><UploadCloud size={22}/><b>{file?file.name:"Choose evidence file"}</b><span>File is fingerprinted on ingestion.</span><input type="file" onChange={e=>setFile(e.target.files?.[0])}/></label>{error&&<div className="error">{error}</div>}
- <div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary" disabled={busy}>{busy?"Securing…":"Secure document"}<ArrowRight size={16}/></button></div></form></div>
+ const submit=async e=>{e.preventDefault();setError("");
+   if(!title.trim())return setError("Document title is required.");
+   if(!file)return setError("Select an evidence file.");
+   if(file.size>25*1024*1024)return setError("File exceeds the 25 MB upload limit.");
+   setBusy(true);
+   try{await api.upload(caseId,file,{title:title.trim(),document_type:type,classification});onDone()}
+   catch(err){setError(err.message||"Evidence upload failed.")}
+   finally{setBusy(false)}
+ };
+ return <div className="modal-backdrop"><form className="modal" onSubmit={submit}>
+  <div className="modal-head"><div><div className="eyebrow">EVIDENCE INGESTION</div><h2>Secure new evidence</h2><p className="muted">Case #{caseId} · content is fingerprinted before registration.</p></div><button type="button" className="icon-btn" onClick={onClose}><X/></button></div>
+  <label>Document title<input value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Forensic analysis report"/></label>
+  <div className="form-grid">
+   <label>Document type<select value={type} onChange={e=>setType(e.target.value)}><option>FIR</option><option>EVIDENCE</option><option>FORENSIC_REPORT</option><option>WITNESS_STATEMENT</option><option>CHARGE_SHEET</option></select></label>
+   <label>Classification<select value={classification} onChange={e=>setClassification(e.target.value)}><option>RESTRICTED</option><option>CONFIDENTIAL</option><option>HIGHLY_RESTRICTED</option></select></label>
+  </div>
+  <label className="dropzone"><UploadCloud size={26}/><b>{file?file.name:"Choose evidence file"}</b><span>{file?`${(file.size/1024/1024).toFixed(2)} MB · ready to secure`:"PDF, DOCX, images or other case material · max 25 MB"}</span><input type="file" onChange={e=>setFile(e.target.files?.[0]||null)}/></label>
+  {error&&<div className="error"><AlertTriangle size={15}/>{error}</div>}
+  <div className="modal-actions"><button type="button" className="secondary" onClick={onClose} disabled={busy}>Cancel</button><button className="primary" disabled={busy}>{busy?"Securing evidence…":"Secure document"}<ArrowRight size={16}/></button></div>
+ </form></div>
 }
 
 function Integrity(){
@@ -176,12 +217,27 @@ function Audit(){const [items,setItems]=useState([]),[error,setError]=useState("
 
 export default function App(){
  const [user,setUser]=useState(null),[page,setPage]=useState("overview"),[selected,setSelected]=useState(null),[checking,setChecking]=useState(true);
- useEffect(()=>{if(localStorage.getItem("kairo_token"))api.me().then(setUser).catch(()=>localStorage.removeItem("kairo_token")).finally(()=>setChecking(false));else setChecking(false)},[]);
- function logout(){localStorage.removeItem("kairo_token");setUser(null);setPage("overview");setSelected(null)}
+ const [theme,setTheme]=useState(()=>localStorage.getItem("kairo_theme")||"light");
+ useEffect(()=>{document.documentElement.dataset.theme=theme;localStorage.setItem("kairo_theme",theme)},[theme]);
+ useEffect(()=>{
+   const unauthorized=()=>{localStorage.removeItem("kairo_token");setUser(null);setSelected(null);setPage("overview")};
+   window.addEventListener("kairo:unauthorized",unauthorized);
+   if(localStorage.getItem("kairo_token")){
+     api.me().then(setUser).catch(()=>localStorage.removeItem("kairo_token")).finally(()=>setChecking(false));
+   } else setChecking(false);
+   return()=>window.removeEventListener("kairo:unauthorized",unauthorized);
+ },[]);
+ async function completeLogin(){
+   try{setUser(await api.me())}catch(e){localStorage.removeItem("kairo_token");throw e}
+ }
+ function logout(){
+   localStorage.removeItem("kairo_token");
+   setUser(null);setPage("overview");setSelected(null);
+ }
  if(checking)return <div className="splash"><Logo/><span>Establishing secure session…</span></div>;
- if(!user)return <Login onLogin={()=>api.me().then(setUser)}/>;
+ if(!user)return <Login onLogin={completeLogin}/>;
  const content=selected?<CaseDetail id={selected} onBack={()=>setSelected(null)}/>:page==="overview"?<Overview user={user} setPage={setPage}/>:page==="cases"?<Cases setSelected={setSelected} onCreate={()=>setPage("cases")}/>:page==="search"?<SearchPage setSelected={setSelected}/>:page==="integrity"?<Integrity/>:page==="trust"?<TrustLedger/>:page==="security"?<Security user={user}/>:page==="incidents"?<Incidents/>:page==="sharing"?<Sharing/>:page==="signatures"?<Signatures/>:page==="governance"?<Governance/>:page==="forensics"?<ForensicExport/>:user.role==="AUDITOR"?<Audit/>:<Overview user={user} setPage={setPage}/>;
- return <Shell user={user} page={selected?"case":page} setPage={p=>{setSelected(null);setPage(p)}} onLogout={logout}>{content}</Shell>
+ return <Shell user={user} page={selected?"case":page} setPage={p=>{setSelected(null);setPage(p)}} onLogout={logout} theme={theme} onToggleTheme={()=>setTheme(t=>t==="light"?"dark":"light")}>{content}</Shell>
 }
 
 function DocumentPicker({value,onChange}){

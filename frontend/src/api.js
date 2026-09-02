@@ -5,11 +5,22 @@ async function request(path, options = {}) {
   const headers = new Headers(options.headers || {});
   if (token) headers.set("Authorization", `Bearer ${token}`);
   if (!(options.body instanceof FormData) && options.body) headers.set("Content-Type", "application/json");
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), options.timeout || 30000);
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { ...options, headers, signal: controller.signal });
+  } catch (err) {
+    if (err?.name === "AbortError") throw new Error("KAIRO API timed out. Check that the backend is running.");
+    throw new Error("KAIRO API is unreachable. Start the backend service and try again.");
+  } finally {
+    clearTimeout(timeout);
+  }
   const text = await res.text();
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = text; }
   if (!res.ok) {
+    if (res.status === 401 && token) window.dispatchEvent(new Event("kairo:unauthorized"));
     const detail = data?.detail;
     const message = typeof detail === "string" ? detail : detail?.message || `Request failed (${res.status})`;
     const error = new Error(message);
@@ -19,7 +30,7 @@ async function request(path, options = {}) {
   return data;
 }
 
-export const api = {
+export const api = {\n  health: ()=>request("/api/health"),
   login: (email,password)=>request("/api/auth/login",{method:"POST",body:JSON.stringify({email,password})}),
   me: ()=>request("/api/auth/me"),
   permissions: ()=>request("/api/auth/permissions"),
