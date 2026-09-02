@@ -1,14 +1,34 @@
-# KAIRO Update 1
+# KAIRO Architecture
 
-Browser/PWA -> React/Vite -> FastAPI -> PostgreSQL
+KAIRO is split into an application/data plane and a separate trust plane.
 
-Document bytes:
-FastAPI -> S3-compatible API -> MinIO
+```text
+React/Vite
+   │
+   ▼
+FastAPI
+   ├── JWT authentication
+   ├── RBAC / permission enforcement
+   ├── evidence lifecycle
+   ├── audit orchestration
+   └── governance
+   │
+   ├───────────────┐
+   ▼               ▼
+PostgreSQL       MinIO / S3-compatible storage
+metadata         evidence bytes
+   │               │
+   └───────┬───────┘
+           ▼
+     KAIRO trust ledger
+           │
+           ▼
+     Fabric Gateway
+           │
+           ▼
+ Hyperledger Fabric
+```
 
-Trust in Update 1:
-stored bytes -> SHA-256 -> compare with persisted fingerprint -> verification result -> persisted audit event
+Evidence bytes remain off-chain.
 
-Next update:
-FastAPI -> Fabric Gateway -> real Hyperledger Fabric network -> real Go chaincode
-
-Documents remain off-chain.
+The repository currently implements JWT authentication and a JavaScript Fabric chaincode package. Keycloak/OIDC and Go chaincode are not represented as completed implementation claims unless separately integrated and verified.

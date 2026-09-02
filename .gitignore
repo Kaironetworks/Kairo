@@ -9,3 +9,8 @@ dist/
 # Private keys
 *.pem
 *.key
+
+# Generated Fabric runtime assets
+fabric/scripts/bin/*
+!fabric/scripts/bin/.gitkeep
+fabric/work/

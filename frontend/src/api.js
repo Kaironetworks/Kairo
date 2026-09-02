@@ -22,7 +22,7 @@ async function request(path, options = {}) {
   if (!res.ok) {
     if (res.status === 401 && token) window.dispatchEvent(new Event("kairo:unauthorized"));
     const detail = data?.detail;
-    const message = typeof detail === "string" ? detail : detail?.message || `Request failed (${res.status})`;
+    const message = formatApiError(detail, res.status);
     const error = new Error(message);
     error.status = res.status; error.code = detail?.code; error.detail = detail;
     throw error;
@@ -30,12 +30,56 @@ async function request(path, options = {}) {
   return data;
 }
 
-export const api = {\n  health: ()=>request("/api/health"),
+
+function formatApiError(detail, status) {
+  if (typeof detail === "string") return detail;
+  if (detail?.message) return detail.message;
+  if (Array.isArray(detail)) {
+    const fields = detail.map(x => {
+      const path = Array.isArray(x?.loc) ? x.loc.filter(Boolean).join(".") : "request";
+      return `${path}: ${x?.msg || "invalid value"}`;
+    });
+    return fields.length ? `Validation error — ${fields.join("; ")}` : `Validation error (${status})`;
+  }
+  return `Request failed (${status})`;
+}
+
+async function blobRequest(path, options = {}) {
+  const token = localStorage.getItem("kairo_token");
+  const headers = new Headers(options.headers || {});
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), options.timeout || 30000);
+  try {
+    const res = await fetch(`${API_BASE}${path}`, { ...options, headers, signal: controller.signal });
+    if (!res.ok) {
+      let data = null;
+      try { data = await res.json(); } catch {}
+      if (res.status === 401 && token) window.dispatchEvent(new Event("kairo:unauthorized"));
+      const detail = data?.detail;
+      const message = typeof detail === "string" ? detail : detail?.message || `Request failed (${res.status})`;
+      const error = new Error(message);
+      error.status = res.status; error.code = detail?.code; error.detail = detail;
+      throw error;
+    }
+    return { res, blob: await res.blob() };
+  } catch (err) {
+    if (err?.name === "AbortError") throw new Error("KAIRO evidence operation timed out. Check the backend and storage services.");
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export const api = {
+  health: ()=>request("/api/health"),
+  systemStatus: async ()=>{const [h,b]=await Promise.allSettled([request("/api/health"),request("/api/blockchain/status")]);return {health:h.status==="fulfilled"?h.value:null,blockchain:b.status==="fulfilled"?b.value:null};},
   login: (email,password)=>request("/api/auth/login",{method:"POST",body:JSON.stringify({email,password})}),
   me: ()=>request("/api/auth/me"),
   permissions: ()=>request("/api/auth/permissions"),
   dashboard: ()=>request("/api/dashboard"),
   cases: ()=>request("/api/cases"),
+  createCase: body=>request("/api/cases",{method:"POST",body:JSON.stringify(body)}),
   case: id=>request(`/api/cases/${id}`),
   documents: caseId=>request(`/api/cases/${caseId}/documents`),
   search: (q="",filters={})=>{const p=new URLSearchParams();if(q.trim())p.set("q",q.trim());if(filters.caseId)p.set("case_id",filters.caseId);if(filters.documentType)p.set("document_type",filters.documentType);if(filters.classification)p.set("classification",filters.classification);p.set("limit",filters.limit||50);return request(`/api/search?${p.toString()}`);},
@@ -50,12 +94,9 @@ export const api = {\n  health: ()=>request("/api/health"),
     return request(`/api/documents/${docId}/versions`,{method:"POST",body:f});
   },
   verify: docId=>request(`/api/documents/${docId}/verify`,{method:"POST"}),
-  download: docId=>request(`/api/documents/${docId}/download`),
+  download: async docId=>(await blobRequest(`/api/documents/${docId}/download`)).blob,
   downloadVersion: async (docId,version)=>{
-    const token=localStorage.getItem("kairo_token");
-    const res=await fetch(`${API_BASE}/api/documents/${docId}/versions/${version}/download`,{headers:{Authorization:`Bearer ${token}`}});
-    if(!res.ok){let d=null;try{d=await res.json()}catch{};throw new Error(typeof d?.detail==="string"?d.detail:d?.detail?.message||`Download failed (${res.status})`);}
-    const blob=await res.blob();
+    const {res,blob}=await blobRequest(`/api/documents/${docId}/versions/${version}/download`);
     const cd=res.headers.get("Content-Disposition")||"";
     const match=cd.match(/filename="?([^";]+)"?/i);
     return {blob,filename:match?.[1]||`kairo-document-v${version}`};
@@ -72,7 +113,7 @@ export const api = {\n  health: ()=>request("/api/health"),
   resolveIncident: (id,resolution)=>request(`/api/incidents/${id}/resolve`,{method:"POST",body:JSON.stringify({resolution})}),
   collaborators: ()=>request("/api/users/collaborators"),
   share: (docId,body)=>request(`/api/documents/${docId}/shares`,{method:"POST",body:JSON.stringify(body)}),
-  incomingShares: ()=>request("/api/shares/incoming"), downloadShared: id=>request(`/api/shares/${id}/download`), outgoingShares: ()=>request("/api/shares/outgoing"),
+  incomingShares: ()=>request("/api/shares/incoming"), downloadShared: async id=>(await blobRequest(`/api/shares/${id}/download`)).blob, outgoingShares: ()=>request("/api/shares/outgoing"),
   revokeShare: id=>request(`/api/shares/${id}/revoke`,{method:"POST"}),
   sign: docId=>request(`/api/documents/${docId}/sign`,{method:"POST"}),
   signatures: docId=>request(`/api/documents/${docId}/signatures`),
@@ -80,6 +121,6 @@ export const api = {\n  health: ()=>request("/api/health"),
   governance: docId=>request(`/api/documents/${docId}/governance`), governanceSummary: ()=>request("/api/governance/summary"),
   retention: (docId,body)=>request(`/api/documents/${docId}/retention`,{method:"POST",body:JSON.stringify(body)}),
   legalHold: (docId,body)=>request(`/api/documents/${docId}/legal-hold`,{method:"POST",body:JSON.stringify(body)}),
-  forensicExport: async (docId,includeBytes=false)=>{const token=localStorage.getItem("kairo_token");const res=await fetch(`${API_BASE}/api/documents/${docId}/forensic-export?include_bytes=${includeBytes}`,{headers:{Authorization:`Bearer ${token}`}});if(!res.ok){let d=null;try{d=await res.json()}catch{};throw new Error(typeof d?.detail==="string"?d.detail:d?.detail?.message||`Export failed (${res.status})`)}const blob=await res.blob();return {blob,filename:`KAIRO-DOC-${String(docId).padStart(5,"0")}-forensic-package.zip`}},
+  forensicExport: async (docId,includeBytes=false)=>{const {blob}=await blobRequest(`/api/documents/${docId}/forensic-export?include_bytes=${includeBytes}`);return {blob,filename:`KAIRO-DOC-${String(docId).padStart(5,"0")}-forensic-package.zip`};},
   securityPosture: ()=>request("/api/security/posture"),
 };

@@ -17,7 +17,7 @@ from .config import settings
 from .db import Base, engine, get_db
 from .models import User, Case, Document, DocumentVersion, AuditEvent
 from .schemas import (
-    Token, UserOut, LoginIn, CaseOut, DocumentOut,
+    Token, UserOut, LoginIn, CaseCreateIn, CaseOut, DocumentOut,
     VersionOut, AuditOut, SearchResultOut,
 )
 from .security import current_user, create_token, verify_password
@@ -31,7 +31,7 @@ from .governance import ensure_governance, create_share, list_shares, revoke_sha
 from datetime import datetime, timezone, timedelta
 
 
-app = FastAPI(title="KAIRO API", version="0.6.0")
+app = FastAPI(title="KAIRO API", version="1.0.0")
 
 # Prototype hardening. Production deployment should use a reverse proxy/WAF
 # and a distributed rate limiter for multiple API instances.
@@ -132,7 +132,33 @@ def deny(
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "service": "kairo-api"}
+    """Readiness-style health without exposing infrastructure secrets."""
+    checks = {"api": "ok", "database": "unknown", "evidence_store": "unknown", "trust_ledger": "unknown"}
+    overall = "ok"
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        checks["database"] = "ok"
+    except Exception:
+        checks["database"] = "unavailable"
+        overall = "degraded"
+
+    try:
+        ensure_bucket()
+        checks["evidence_store"] = "ok"
+    except Exception:
+        checks["evidence_store"] = "unavailable"
+        overall = "degraded"
+
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1 FROM trust_blocks LIMIT 1"))
+        checks["trust_ledger"] = "ok"
+    except Exception:
+        checks["trust_ledger"] = "unavailable"
+        overall = "degraded"
+
+    return {"status": overall, "service": "kairo-api", "checks": checks}
 
 
 @app.post("/api/auth/login", response_model=Token)
@@ -217,6 +243,27 @@ def cases(
     user: User = Depends(require_permission(Permission.CASE_READ)),
 ):
     return list(db.scalars(select(Case).order_by(Case.created_at.desc())))
+
+
+@app.post("/api/cases", response_model=CaseOut, status_code=201)
+def create_case(
+    body: CaseCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission(Permission.CASE_CREATE)),
+):
+    case_number = body.case_number.strip()
+    if not case_number or not body.title.strip() or not body.station.strip():
+        raise HTTPException(422, "Case number, title and station are required.")
+    if db.scalar(select(Case).where(Case.case_number == case_number)):
+        raise HTTPException(409, "Case number already exists.")
+    if body.priority not in {"HIGH", "MEDIUM", "LOW"}:
+        raise HTTPException(422, "Priority must be HIGH, MEDIUM or LOW.")
+    case = Case(case_number=case_number, title=body.title.strip(), description=body.description.strip(), priority=body.priority, station=body.station.strip(), status="UNDER_INVESTIGATION", is_demo=False)
+    db.add(case)
+    db.commit()
+    db.refresh(case)
+    audit(db, user, "CASE_CREATED", "CASE", case.id, "SUCCESS", json.dumps({"case_number": case.case_number}))
+    return case
 
 
 @app.get(
@@ -926,6 +973,18 @@ def download_document(
         raise HTTPException(404, "Document has no version")
 
     data = get_bytes(version.object_key)
+    observed = hashlib.sha256(data).hexdigest()
+    if observed != version.sha256:
+        audit(
+            db,
+            user,
+            "DOCUMENT_VIEW",
+            "DOCUMENT",
+            doc.id,
+            "BLOCKED",
+            json.dumps({"version": version.version, "expected": version.sha256, "observed": observed}),
+        )
+        raise HTTPException(409, "Refusing retrieval: current evidence failed integrity verification")
 
     audit(
         db,
@@ -934,7 +993,7 @@ def download_document(
         "DOCUMENT",
         doc.id,
         "SUCCESS",
-        f"version={version.version}",
+        f"version={version.version};sha256={observed}",
     )
 
     return Response(

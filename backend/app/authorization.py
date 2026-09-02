@@ -11,6 +11,7 @@ from .trust_ledger import anchor_audit_event
 
 class Permission(StrEnum):
     CASE_READ = "case:read"
+    CASE_CREATE = "case:create"
     DOCUMENT_READ = "document:read"
     DOCUMENT_UPLOAD = "document:upload"
     DOCUMENT_VERSION_CREATE = "document:version:create"
@@ -29,7 +30,7 @@ class Permission(StrEnum):
 
 ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
     "INVESTIGATING_OFFICER": frozenset({
-        Permission.CASE_READ,
+        Permission.CASE_READ, Permission.CASE_CREATE,
         Permission.DOCUMENT_READ,
         Permission.DOCUMENT_UPLOAD,
         Permission.DOCUMENT_VERSION_CREATE,
@@ -38,7 +39,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.TRUST_READ, Permission.SHARE_CREATE, Permission.SHARE_READ, Permission.SHARE_REVOKE, Permission.SIGN, Permission.SIGNATURE_READ, Permission.GOVERNANCE_READ, Permission.GOVERNANCE_MANAGE,
     }),
     "FORENSIC_OFFICER": frozenset({
-        Permission.CASE_READ,
+        Permission.CASE_READ, Permission.CASE_CREATE,
         Permission.DOCUMENT_READ,
         Permission.DOCUMENT_UPLOAD,
         Permission.DOCUMENT_VERSION_CREATE,

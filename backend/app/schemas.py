@@ -16,6 +16,13 @@ class LoginIn(BaseModel):
     email: str
     password: str
 
+class CaseCreateIn(BaseModel):
+    case_number: str
+    title: str
+    description: str = ""
+    priority: str = "HIGH"
+    station: str
+
 class CaseOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int

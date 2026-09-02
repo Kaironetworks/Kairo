@@ -7,13 +7,13 @@ import {
 } from "lucide-react";
 import {api} from "./api";
 
-const DEMO_EMAIL="investigator@kairo.local", DEMO_PASSWORD="KairoDemo!2026";
+const DEMO_EMAIL="investigator@kairo.local";
 
 const roleLabel=r=>(r||"").replaceAll("_"," ");
 function Logo(){return <div className="brand"><span className="brand-mark">K</span><span>KAIRO</span></div>}
 
 function Login({onLogin}){
- const [email,setEmail]=useState(DEMO_EMAIL),[password,setPassword]=useState(DEMO_PASSWORD),[busy,setBusy]=useState(false),[error,setError]=useState("");
+ const [email,setEmail]=useState(DEMO_EMAIL),[password,setPassword]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState("");
  async function submit(e){e.preventDefault();setBusy(true);setError("");try{const r=await api.login(email,password);localStorage.setItem("kairo_token",r.access_token);onLogin()}catch(e){setError(e.message)}finally{setBusy(false)}}
  return <main className="login-page"><div className="ambient a1"/><div className="ambient a2"/>
  <nav className="topbar"><Logo/><div className="top-status"><span className="status-dot"/>SECURE ENVIRONMENT</div></nav>
@@ -21,45 +21,57 @@ function Login({onLogin}){
  <h1>Trust,<br/><em>engineered.</em></h1><p>KAIRO is a secure digital document management and evidence integrity platform built for legal and investigative workflows.</p>
  <div className="proof-row"><div><b>SHA-256</b><span>Content integrity</span></div><div><b>JWT</b><span>Identity control</span></div><div><b>RBAC</b><span>Least privilege</span></div></div></div>
  <form className="login-card" onSubmit={submit}><div className="card-kicker">AUTHORIZED ACCESS</div><h2>Enter KAIRO</h2><p className="muted">Authenticate to access the evidence workspace.</p>
- <label>Official email<input value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Password<input type="password" value={password} onChange={e=>setPassword(e.target.value)}/></label>
+ <label>Official email<input autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)} /></label><label>Password<input autoComplete="current-password" type="password" value={password} onChange={e=>setPassword(e.target.value)} /></label>
  {error&&<div className="error"><AlertTriangle size={16}/>{error}</div>}<button className="primary full" disabled={busy}>{busy?"Authenticating…":"Authenticate"}<ArrowRight size={17}/></button>
  <div className="login-foot"><LockKeyhole size={14}/> Signed session · least-privilege access</div></form></section>
  <footer><span>KAIRO</span><span>Trust, engineered.</span><span>Secure Digital Document Management System for Legal and Investigation Documents</span></footer>
  </main>
 }
 
-function Shell({user,page,setPage,onLogout,theme,onToggleTheme,children}){
+function Shell({user,page,setPage,onLogout,children}){
  const [open,setOpen]=useState(false);
  const nav=[
-  ["overview","Overview",Activity],
+  ["overview","Dashboard",Activity],
   ["cases","Investigations",Search],
-  ["search","Search & retrieval",Search],
-  ["integrity","Integrity",Fingerprint],
-  ["trust","Trust ledger",Blocks],
+  ["search","Evidence",Search],
+  ["integrity","Verification",Fingerprint],
+  ["trust","Trust & integrity",Blocks],
   ["security","Security",ShieldAlert],
   ...(user.role!=="AUDITOR"?[["incidents","Incidents",AlertTriangle],["sharing","Secure sharing",ExternalLink],["signatures","Signatures",KeyRound],["forensics","Forensic export",FileArchive]]:[]),
   ["governance","Governance",LockKeyhole],
   ...(user.role==="AUDITOR"?[["audit","Audit trail",History]]:[])
  ];
- return <div className="app-shell"><aside className={open?"sidebar open":"sidebar"}><div className="side-head"><Logo/><button className="icon-btn mobile" onClick={()=>setOpen(false)}><X/></button></div>
- <div className="side-label">COMMAND CENTER · {roleLabel(user.role)}</div>{nav.map(([id,l,I])=><button key={id} className={"nav-item "+(page===id?"active":"")} onClick={()=>{setPage(id);setOpen(false)}}><I size={18}/><span>{l}</span><ChevronRight size={14}/></button>)}
- <div className="side-bottom"><div className="secure-box"><ShieldCheck size={17}/><div><b>Trust layer</b><span>Policy enforced</span></div></div><button className="nav-item logout" onClick={onLogout}><LogOut size={18}/><span>Sign out</span></button></div></aside>
- <div className="main"><header className="appbar"><button className="icon-btn mobile" onClick={()=>setOpen(true)}><Menu/></button><div className="crumb">KAIRO / <b>{page}</b></div>
+ return <div className="app-shell"><aside className={open?"sidebar open":"sidebar"}>
+ <div className="side-head"><Logo/><button className="icon-btn mobile" onClick={()=>setOpen(false)} aria-label="Close navigation"><X/></button></div>
+ <div className="side-context"><span>SECURE OPERATIONS</span><b>{roleLabel(user.role)}</b><small>Authorised workspace</small></div>
+ <div className="nav-scroll">{nav.map(([id,l,I])=><button key={id} className={"nav-item "+(page===id?"active":"")} onClick={()=>{setPage(id);setOpen(false)}} aria-current={page===id?"page":undefined}><I size={18}/><span>{l}</span><ChevronRight size={14}/></button>)}</div>
+ <div className="side-bottom"><div className="secure-box"><span className="secure-dot"/><div><b>Trust layer</b><span>Policy enforced</span></div><span className="secure-state">LIVE</span></div><button className="nav-item logout" onClick={onLogout} title="Sign out of KAIRO"><LogOut size={18}/><span>Sign out</span></button></div></aside>
+ <div className="main"><header className="appbar"><button className="icon-btn mobile" onClick={()=>setOpen(true)} aria-label="Open navigation"><Menu/></button><div className="crumb"><span>KAIRO</span><i>/</i><b>{page}</b></div>
  <div className="header-actions">
-  <button className="theme-toggle" onClick={onToggleTheme} title={theme==="light"?"Switch to dark mode":"Switch to light mode"}>
-    {theme==="light"?<span>☾</span>:<span>☀</span>} <span>{theme==="light"?"Dark":"Light"}</span>
-  </button>
   <div className="identity"><div className="avatar">{user.full_name.split(" ").map(x=>x[0]).join("")}</div><div><b>{user.full_name}</b><span>{roleLabel(user.role)}</span></div></div>
 </div></header><LiveTrustRail/><div className="content">{children}</div></div></div>
 }
 function LiveTrustRail(){
- const [tick,setTick]=useState(0);
- useEffect(()=>{const id=setInterval(()=>setTick(t=>t+1),3200);return()=>clearInterval(id)},[]);
- const signals=["Identity verified","Evidence store reachable","Integrity engine ready","Audit trail recording","Policy controls active"];
+ const [state,setState]=useState({health:null,blockchain:null}),[tick,setTick]=useState(0);
+ async function refresh(){
+   try{setState(await api.systemStatus());setTick(t=>t+1)}catch{setTick(t=>t+1)}
+ }
+ useEffect(()=>{refresh();const id=setInterval(refresh,5000);return()=>clearInterval(id)},[]);
+ const h=state.health, b=state.blockchain;
+ const db=h?.checks?.database==="ok", store=h?.checks?.evidence_store==="ok", ledger=h?.checks?.trust_ledger==="ok";
+ const fabric=b?.reachable===true;
+ const signals=[
+   ["Identity verified","Authenticated session",true],
+   ["Evidence store",store?"Protected object storage":"Evidence store unavailable",store],
+   ["Integrity engine ready",ledger?"SHA-256 verification":"Trust ledger unavailable",ledger],
+   ["Audit trail recording",db?"PostgreSQL audit persistence":"Database unavailable",db],
+   ["Fabric trust anchor",fabric?"Permissioned ledger reachable":"Blockchain gateway offline",fabricbric],
+ ];
+ const operational=!!(h?.status==="ok" && db && store && ledger);
  return <aside className="live-rail" aria-label="KAIRO system status">
    <div className="live-rail-head"><span className="live-pulse"/><span>LIVE TRUST SIGNAL</span><b>#{String(tick+1).padStart(3,"0")}</b></div>
-   <div className="signal-stack">{signals.map((x,i)=><div className="signal" key={x}><span className="signal-line"/><div><b>{x}</b><small>{i===0?"Authenticated session":i===1?"Protected object storage":i===2?"SHA-256 verification":i===3?"Every protected action":"RBAC + governance"}</small></div><CircleCheck2 size={14}/></div>)}</div>
-   <div className="rail-foot"><span>CONTROL PLANE</span><strong>OPERATIONAL</strong></div>
+   <div className="signal-stack">{signals.map(([x,sub,good])=><div className={`signal ${good?"":"signal-warn"}`} key={x}><span className="signal-line"/><div><b>{x}</b><small>{sub}</small></div>{good?<CircleCheck size={14}/>:<AlertTriangle size={14}/>}</div>)}</div>
+   <div className="rail-foot"><span>CONTROL PLANE</span><strong>{operational?"OPERATIONAL":"DEGRADED"}</strong></div>
  </aside>
 }
 
@@ -89,6 +101,7 @@ function Overview({user,setPage}){
 function SearchPage({setSelected}){
  const [q,setQ]=useState(""),[type,setType]=useState(""),[classification,setClassification]=useState(""),[caseId,setCaseId]=useState(""),[items,setItems]=useState([]),[loading,setLoading]=useState(false),[searched,setSearched]=useState(false),[error,setError]=useState(""),[cases,setCases]=useState([]),[downloading,setDownloading]=useState(null);
  useEffect(()=>{api.cases().then(setCases).catch(()=>{})},[]);
+ useEffect(()=>{run()},[]);
  async function run(e){e?.preventDefault();setLoading(true);setError("");try{setItems(await api.search(q,{caseId,documentType:type,classification}));setSearched(true)}catch(e){setError(e.message)}finally{setLoading(false)}}
  async function download(item){setDownloading(`${item.document_id}:${item.current_version}`);try{const r=await api.downloadVersion(item.document_id,item.current_version);const url=URL.createObjectURL(r.blob);const a=document.createElement("a");a.href=url;a.download=r.filename;a.click();URL.revokeObjectURL(url)}catch(e){setError(e.message)}finally{setDownloading(null)}}
  return <><PageTitle eyebrow="EVIDENCE RETRIEVAL" title="Search & retrieval" desc="Find protected evidence by case, document number, title, filename, type or classification without exposing document bytes in the search index." action={<button className="secondary" onClick={()=>run()}><RefreshCw size={15}/>Refresh search</button>}/>
@@ -99,11 +112,11 @@ function SearchPage({setSelected}){
  <div className="trust-strip"><Search/><div><b>Retrieval is still security-controlled.</b><span>Search returns metadata only. Actual evidence bytes are retrieved through an authorized endpoint, integrity-checked before release, and the retrieval is recorded as a custody/audit event.</span></div></div></>
 }
 
-function Cases({setSelected,onCreate}){
+function Cases({setSelected,onCreate,user}){
  const [items,setItems]=useState([]),[loading,setLoading]=useState(true);
  async function load(){setLoading(true);try{setItems(await api.cases())}finally{setLoading(false)}}
  useEffect(()=>{load()},[]);
- return <><PageTitle eyebrow="INVESTIGATION REGISTRY" title="Cases" desc="The operational entry point for case files and evidence collections." action={<div className="actions"><button className="secondary" onClick={load}><RefreshCw size={15}/>Refresh</button><button className="primary" onClick={onCreate}><Plus size={15}/>Add evidence</button></div>}/>
+ return <><PageTitle eyebrow="INVESTIGATION REGISTRY" title="Cases" desc="The operational entry point for case files and evidence collections." action={<div className="actions"><button className="secondary" onClick={load}><RefreshCw size={15}/>Refresh</button>{user.role!=="AUDITOR"&&<button className="primary" onClick={onCreate}><Plus size={15}/>New investigation</button>}</div>}/>
  <section className="panel"><div className="table-head"><span>CASE</span><span>STATUS</span><span>PRIORITY</span><span>STATION</span><span></span></div>
  {loading?<Empty>Loading registry…</Empty>:items.map(c=><button className="table-row" key={c.id} onClick={()=>setSelected(c.id)}><div><b>{c.case_number}</b><span>{c.title}</span></div><span className="pill success">{c.status.replaceAll("_"," ")}</span><span className="pill high">{c.priority}</span><span>{c.station}</span><ChevronRight/></button>)}</section></>
 }
@@ -155,7 +168,7 @@ function UploadModal({caseId,onClose,onDone}){
    catch(err){setError(err.message||"Evidence upload failed.")}
    finally{setBusy(false)}
  };
- return <div className="modal-backdrop"><form className="modal" onSubmit={submit}>
+ return <div className="modal-backdrop"><form className="modal-card evidence-upload" onSubmit={submit}>
   <div className="modal-head"><div><div className="eyebrow">EVIDENCE INGESTION</div><h2>Secure new evidence</h2><p className="muted">Case #{caseId} · content is fingerprinted before registration.</p></div><button type="button" className="icon-btn" onClick={onClose}><X/></button></div>
   <label>Document title<input value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Forensic analysis report"/></label>
   <div className="form-grid">
@@ -169,13 +182,18 @@ function UploadModal({caseId,onClose,onDone}){
 }
 
 function Integrity(){
- const [cases,setCases]=useState([]),[docs,setDocs]=useState([]),[selected,setSelected]=useState(null),[result,setResult]=useState(null);
- useEffect(()=>{api.cases().then(async cs=>{setCases(cs);if(cs[0])setDocs(await api.documents(cs[0].id))})},[]);
- async function verify(){setResult({busy:true});try{setResult(await api.verify(selected.id))}catch(e){setResult({error:e.message})}}
+ const [doc,setDoc]=useState(""),[selected,setSelected]=useState(null),[result,setResult]=useState(null);
+ async function verify(){if(!selected)return;setResult({busy:true});try{setResult(await api.verify(selected.id))}catch(e){setResult({error:e.message})}}
+ useEffect(()=>{
+   if(!doc){setSelected(null);setResult(null);return}
+   api.search("",{limit:100}).then(found=>{setSelected(found.find(x=>Number(x.document_id)===Number(doc))||{id:Number(doc),document_number:`KAIRO-DOC-${String(doc).padStart(5,"0")}`});setResult(null)}).catch(e=>setResult({error:e.message}));
+ },[doc]);
  return <><PageTitle eyebrow="CRYPTOGRAPHIC ASSURANCE" title="Integrity" desc="Read the evidence bytes from object storage and independently compare them with the fingerprint recorded at ingestion."/>
  <div className="integrity-hero"><div className="shield-ring"><Fingerprint size={42}/></div><div><div className="eyebrow">VERIFICATION ENGINE</div><h2>Evidence can prove itself.</h2><p>KAIRO does not trust a filename, timestamp or UI state. It recalculates the content fingerprint.</p></div></div>
- <section className="panel"><PanelHead title="Select evidence"/>{docs.map(d=><div className="doc-row" key={d.id}><div className="doc-icon"><Fingerprint/></div><div className="doc-main"><b>{d.document_number} · {d.title}</b><span>{d.document_type} · v{d.current_version} · {d.classification}</span></div><button className="secondary" onClick={()=>{setSelected(d);setResult(null)}}>Verify <Fingerprint size={15}/></button></div>)}</section>
- {selected&&<section className="panel inspect"><PanelHead title="Verification result" action={<button className="icon-btn" onClick={()=>setSelected(null)}><X/></button>}/><div className="inspect-grid"><div><span>DOCUMENT</span><b>{selected.document_number}</b></div><div><span>VERSION</span><b>{selected.current_version}</b></div><div><span>RECORDED</span><b>SHA-256</b></div><div><span>STORAGE</span><b>MINIO</b></div></div><button className="primary" onClick={verify} disabled={result?.busy}><Fingerprint size={16}/>{result?.busy?"Reading + hashing…":"Run verification"}</button>
+ <section className="panel"><PanelHead title="Select evidence"/><div className="toolbar"><DocumentPicker value={doc} onChange={v=>{setDoc(v);setSelected(null);setResult(null)}}/></div></section>
+ {doc&&<section className="panel inspect"><PanelHead title="Verification result" action={<button className="icon-btn" onClick={()=>{setDoc("");setSelected(null);setResult(null)}}><X/></button>}/><div className="toolbar"><div className="selected-evidence"><Fingerprint size={15}/><span>{selected?.document_number||`Document #${doc}`}</span></div></div>
+ {selected&&<div className="inspect-grid"><div><span>DOCUMENT</span><b>{selected.document_number}</b></div><div><span>VERSION</span><b>{selected.current_version??"—"}</b></div><div><span>RECORDED</span><b>SHA-256</b></div><div><span>STORAGE</span><b>MINIO</b></div></div>}
+ {selected&&<button className="primary verify-button" onClick={verify} disabled={result?.busy}><Fingerprint size={16}/>{result?.busy?"Reading + hashing…":"Run verification"}</button>}
  {result&&!result.error&&!result.busy&&<div className={result.verified?"verify-good":"verify-bad"}>{result.verified?<CircleCheck/>:<AlertTriangle/>}<div><b>{result.result}</b><span>{result.verified?"The current object matches the recorded fingerprint.":"The object differs from the recorded fingerprint — an integrity incident is present."}</span><code>expected {result.expected_sha256}<br/>observed&nbsp; {result.observed_sha256}</code></div></div>}{result?.error&&<div className="error">{result.error}</div>}</section>}
  </>}
 
@@ -216,9 +234,8 @@ function Audit(){const [items,setItems]=useState([]),[error,setError]=useState("
  {error?<div className="error banner">{error}</div>:<section className="panel"><div className="table-head"><span>EVENT</span><span>ACTOR</span><span>RESULT</span><span>TIMESTAMP</span><span></span></div>{items.map(a=><div className="table-row" key={a.id}><div><b>{a.action.replaceAll("_"," ")}</b><span>{a.target_type} · {a.target_id}</span></div><span>#{a.actor_id??"SYSTEM"}</span><span className={["SUCCESS","VERIFIED"].includes(a.result)?"result-good":"result-neutral"}>{a.result}</span><span>{new Date(a.created_at).toLocaleString()}</span><ChevronRight/></div>)}</section>}</>}
 
 export default function App(){
- const [user,setUser]=useState(null),[page,setPage]=useState("overview"),[selected,setSelected]=useState(null),[checking,setChecking]=useState(true);
- const [theme,setTheme]=useState(()=>localStorage.getItem("kairo_theme")||"light");
- useEffect(()=>{document.documentElement.dataset.theme=theme;localStorage.setItem("kairo_theme",theme)},[theme]);
+ const [user,setUser]=useState(null),[page,setPage]=useState("overview"),[selected,setSelected]=useState(null),[checking,setChecking]=useState(true),[showCaseCreate,setShowCaseCreate]=useState(false);
+ useEffect(()=>{document.documentElement.dataset.theme="light"},[]);
  useEffect(()=>{
    const unauthorized=()=>{localStorage.removeItem("kairo_token");setUser(null);setSelected(null);setPage("overview")};
    window.addEventListener("kairo:unauthorized",unauthorized);
@@ -236,8 +253,15 @@ export default function App(){
  }
  if(checking)return <div className="splash"><Logo/><span>Establishing secure session…</span></div>;
  if(!user)return <Login onLogin={completeLogin}/>;
- const content=selected?<CaseDetail id={selected} onBack={()=>setSelected(null)}/>:page==="overview"?<Overview user={user} setPage={setPage}/>:page==="cases"?<Cases setSelected={setSelected} onCreate={()=>setPage("cases")}/>:page==="search"?<SearchPage setSelected={setSelected}/>:page==="integrity"?<Integrity/>:page==="trust"?<TrustLedger/>:page==="security"?<Security user={user}/>:page==="incidents"?<Incidents/>:page==="sharing"?<Sharing/>:page==="signatures"?<Signatures/>:page==="governance"?<Governance/>:page==="forensics"?<ForensicExport/>:user.role==="AUDITOR"?<Audit/>:<Overview user={user} setPage={setPage}/>;
- return <Shell user={user} page={selected?"case":page} setPage={p=>{setSelected(null);setPage(p)}} onLogout={logout} theme={theme} onToggleTheme={()=>setTheme(t=>t==="light"?"dark":"light")}>{content}</Shell>
+ const content=selected?<CaseDetail id={selected} onBack={()=>setSelected(null)}/>:page==="overview"?<Overview user={user} setPage={setPage}/>:page==="cases"?<Cases setSelected={setSelected} user={user} onCreate={()=>setShowCaseCreate(true)}/>:page==="search"?<SearchPage setSelected={setSelected}/>:page==="integrity"?<Integrity/>:page==="trust"?<TrustLedger/>:page==="security"?<Security user={user}/>:page==="incidents"?<Incidents/>:page==="sharing"?<Sharing/>:page==="signatures"?<Signatures/>:page==="governance"?<Governance/>:page==="forensics"?<ForensicExport/>:user.role==="AUDITOR"?<Audit/>:<Overview user={user} setPage={setPage}/>;
+ return <Shell user={user} page={selected?"case":page} setPage={p=>{setSelected(null);setPage(p)}} onLogout={logout}>{content}{showCaseCreate&&<CaseCreateModal onClose={()=>setShowCaseCreate(false)} onCreated={id=>{setShowCaseCreate(false);setSelected(id);setPage("cases")}}/>}</Shell>
+}
+
+function CaseCreateModal({onClose,onCreated}){
+ const [form,setForm]=useState({case_number:"",title:"",description:"",priority:"HIGH",station:""}),[busy,setBusy]=useState(false),[error,setError]=useState("");
+ function change(k,v){setForm(f=>({...f,[k]:v}))}
+ async function submit(e){e.preventDefault();setBusy(true);setError("");try{const r=await api.createCase(form);onCreated(r.id)}catch(e){setError(e.message)}finally{setBusy(false)}}
+ return <div className="modal-backdrop" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><form className="modal-card case-create" onSubmit={submit}><div className="modal-head"><div><div className="eyebrow">CASE REGISTRATION</div><h2>New investigation</h2><p>Create the controlled case container before evidence enters KAIRO.</p></div><button type="button" className="icon-btn" onClick={onClose}><X/></button></div><div className="form-grid two"><label>Case number<input required value={form.case_number} onChange={e=>change("case_number",e.target.value)} placeholder="CASE-2026-002"/></label><label>Priority<select value={form.priority} onChange={e=>change("priority",e.target.value)}><option>HIGH</option><option>MEDIUM</option><option>LOW</option></select></label><label>Title<input required value={form.title} onChange={e=>change("title",e.target.value)} placeholder="Investigation title"/></label><label>Station / unit<input required value={form.station} onChange={e=>change("station",e.target.value)} placeholder="Investigating unit"/></label></div><label>Description<textarea value={form.description} onChange={e=>change("description",e.target.value)} placeholder="Brief operational description" rows="4"/></label>{error&&<div className="error">{error}</div>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary" disabled={busy}>{busy?"Registering…":"Create investigation"}<ArrowRight size={15}/></button></div></form></div>
 }
 
 function DocumentPicker({value,onChange}){
