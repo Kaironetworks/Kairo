@@ -56,7 +56,7 @@ function LiveTrustRail(){
  async function refresh(){
    try{setState(await api.systemStatus());setTick(t=>t+1)}catch{setTick(t=>t+1)}
  }
- useEffect(()=>{refresh();const id=setInterval(refresh,5000);return()=>clearInterval(id)},[]);
+ useEffect(()=>{refresh();const id=setInterval(refresh,10000);return()=>clearInterval(id)},[]);
  const h=state.health, b=state.blockchain;
  const db=h?.checks?.database==="ok", store=h?.checks?.evidence_store==="ok", ledger=h?.checks?.trust_ledger==="ok";
  const fabric=b?.reachable===true;
@@ -65,7 +65,7 @@ function LiveTrustRail(){
    ["Evidence store",store?"Protected object storage":"Evidence store unavailable",store],
    ["Integrity engine ready",ledger?"SHA-256 verification":"Trust ledger unavailable",ledger],
    ["Audit trail recording",db?"PostgreSQL audit persistence":"Database unavailable",db],
-   ["Fabric trust anchor",fabric?"Permissioned ledger reachable":"Blockchain gateway offline",fabricbric],
+   ["Fabric trust anchor",fabric?"Permissioned ledger reachable":"Blockchain gateway offline",fabric],
  ];
  const operational=!!(h?.status==="ok" && db && store && ledger);
  return <aside className="live-rail" aria-label="KAIRO system status">

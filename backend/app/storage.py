@@ -10,7 +10,7 @@ def client():
         aws_access_key_id=settings.minio_access_key,
         aws_secret_access_key=settings.minio_secret_key,
         region_name="us-east-1",
-        config=Config(signature_version="s3v4"),
+        config=Config(signature_version="s3v4", connect_timeout=2, read_timeout=3, retries={"max_attempts": 0}),
     )
 
 def ensure_bucket():

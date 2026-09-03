@@ -73,12 +73,12 @@ async function blobRequest(path, options = {}) {
 
 export const api = {
   health: ()=>request("/api/health"),
-  systemStatus: async ()=>{const [h,b]=await Promise.allSettled([request("/api/health"),request("/api/blockchain/status")]);return {health:h.status==="fulfilled"?h.value:null,blockchain:b.status==="fulfilled"?b.value:null};},
-  login: (email,password)=>request("/api/auth/login",{method:"POST",body:JSON.stringify({email,password})}),
-  me: ()=>request("/api/auth/me"),
+  systemStatus: async ()=>{const [h,b]=await Promise.allSettled([request("/api/health",{timeout:4000}),request("/api/blockchain/status",{timeout:4000})]);return {health:h.status==="fulfilled"?h.value:null,blockchain:b.status==="fulfilled"?b.value:null};},
+  login: (email,password)=>request("/api/auth/login",{method:"POST",body:JSON.stringify({email,password}),timeout:10000}),
+  me: ()=>request("/api/auth/me",{timeout:8000}),
   permissions: ()=>request("/api/auth/permissions"),
-  dashboard: ()=>request("/api/dashboard"),
-  cases: ()=>request("/api/cases"),
+  dashboard: ()=>request("/api/dashboard",{timeout:10000}),
+  cases: ()=>request("/api/cases",{timeout:10000}),
   createCase: body=>request("/api/cases",{method:"POST",body:JSON.stringify(body)}),
   case: id=>request(`/api/cases/${id}`),
   documents: caseId=>request(`/api/cases/${caseId}/documents`),
