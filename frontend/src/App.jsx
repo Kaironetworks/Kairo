@@ -15,11 +15,11 @@ function Logo(){return <div className="brand"><span className="brand-mark">K</sp
 function Login({onLogin}){
  const [email,setEmail]=useState(DEMO_EMAIL),[password,setPassword]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState("");
  async function submit(e){e.preventDefault();setBusy(true);setError("");try{const r=await api.login(email,password);localStorage.setItem("kairo_token",r.access_token);onLogin()}catch(e){setError(e.message)}finally{setBusy(false)}}
- return <main className="login-page"><div className="ambient a1"/><div className="ambient a2"/>
+ return <main className="login-page">
  <nav className="topbar"><Logo/><div className="top-status"><span className="status-dot"/>SECURE ENVIRONMENT</div></nav>
- <section className="login-grid"><div className="hero-copy"><div className="eyebrow"><ShieldCheck size={14}/> DIGITAL EVIDENCE INFRASTRUCTURE</div>
- <h1>Trust,<br/><em>engineered.</em></h1><p>KAIRO is a secure digital document management and evidence integrity platform built for legal and investigative workflows.</p>
- <div className="proof-row"><div><b>SHA-256</b><span>Content integrity</span></div><div><b>JWT</b><span>Identity control</span></div><div><b>RBAC</b><span>Least privilege</span></div></div></div>
+ <section className="login-grid"><div className="hero-copy"><div className="eyebrow"><ShieldCheck size={14}/> DIGITAL EVIDENCE REGISTER</div>
+ <h1>Trust,<br/><em>engineered.</em></h1><p>A secure digital document and evidence management system for legal and investigative workflows. Built around identity, evidence integrity, version history and traceable action.</p>
+ <div className="proof-row"><div><b>01 / INTEGRITY</b><span>SHA-256 evidence fingerprint</span></div><div><b>02 / IDENTITY</b><span>Authenticated session</span></div><div><b>03 / ACCESS</b><span>Role-based authorization</span></div></div></div>
  <form className="login-card" onSubmit={submit}><div className="card-kicker">AUTHORIZED ACCESS</div><h2>Enter KAIRO</h2><p className="muted">Authenticate to access the evidence workspace.</p>
  <label>Official email<input autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)} /></label><label>Password<input autoComplete="current-password" type="password" value={password} onChange={e=>setPassword(e.target.value)} /></label>
  {error&&<div className="error"><AlertTriangle size={16}/>{error}</div>}<button className="primary full" disabled={busy}>{busy?"Authenticating…":"Authenticate"}<ArrowRight size={17}/></button>
@@ -49,32 +49,8 @@ function Shell({user,page,setPage,onLogout,children}){
  <div className="main"><header className="appbar"><button className="icon-btn mobile" onClick={()=>setOpen(true)} aria-label="Open navigation"><Menu/></button><div className="crumb"><span>KAIRO</span><i>/</i><b>{page}</b></div>
  <div className="header-actions">
   <div className="identity"><div className="avatar">{user.full_name.split(" ").map(x=>x[0]).join("")}</div><div><b>{user.full_name}</b><span>{roleLabel(user.role)}</span></div></div>
-</div></header><LiveTrustRail/><div className="content">{children}</div></div></div>
+</div></header><div className="content">{children}</div></div></div>
 }
-function LiveTrustRail(){
- const [state,setState]=useState({health:null,blockchain:null}),[tick,setTick]=useState(0);
- async function refresh(){
-   try{setState(await api.systemStatus());setTick(t=>t+1)}catch{setTick(t=>t+1)}
- }
- useEffect(()=>{refresh();const id=setInterval(refresh,10000);return()=>clearInterval(id)},[]);
- const h=state.health, b=state.blockchain;
- const db=h?.checks?.database==="ok", store=h?.checks?.evidence_store==="ok", ledger=h?.checks?.trust_ledger==="ok";
- const fabric=b?.reachable===true;
- const signals=[
-   ["Identity verified","Authenticated session",true],
-   ["Evidence store",store?"Protected object storage":"Evidence store unavailable",store],
-   ["Integrity engine ready",ledger?"SHA-256 verification":"Trust ledger unavailable",ledger],
-   ["Audit trail recording",db?"PostgreSQL audit persistence":"Database unavailable",db],
-   ["Fabric trust anchor",fabric?"Permissioned ledger reachable":"Blockchain gateway offline",fabric],
- ];
- const operational=!!(h?.status==="ok" && db && store && ledger);
- return <aside className="live-rail" aria-label="KAIRO system status">
-   <div className="live-rail-head"><span className="live-pulse"/><span>LIVE TRUST SIGNAL</span><b>#{String(tick+1).padStart(3,"0")}</b></div>
-   <div className="signal-stack">{signals.map(([x,sub,good])=><div className={`signal ${good?"":"signal-warn"}`} key={x}><span className="signal-line"/><div><b>{x}</b><small>{sub}</small></div>{good?<CircleCheck size={14}/>:<AlertTriangle size={14}/>}</div>)}</div>
-   <div className="rail-foot"><span>CONTROL PLANE</span><strong>{operational?"OPERATIONAL":"DEGRADED"}</strong></div>
- </aside>
-}
-
 function PageTitle({eyebrow,title,desc,action}){return <div className="page-title"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1><p>{desc}</p></div>{action&&<div>{action}</div>}</div>}
 function PanelHead({title,action}){return <div className="panel-head"><h3>{title}</h3>{action}</div>}
 function Stat({Icon,label,value,detail}){return <div className="stat"><div className="stat-icon"><Icon size={18}/></div><div><span>{label}</span><strong>{value}</strong><small>{detail}</small></div></div>}
@@ -95,7 +71,7 @@ function Overview({user,setPage}){
  {cases.length?cases.slice(0,4).map(c=><div className="case-row" key={c.id}><div className="case-icon"><Search size={17}/></div><div className="case-main"><b>{c.case_number}</b><span>{c.title}</span></div><span className="pill high">{c.priority}</span><ChevronRight size={16}/></div>):<Empty/>}</section>
  <section className="panel"><PanelHead title="Protection posture"/><div className="posture"><div className="posture-icon"><ShieldCheck/></div><div><b>Least privilege active</b><span>Your role is enforced by the API. Protected actions are denied server-side and can be audited.</span></div></div>
  <div className="mini-grid"><div><span>IDENTITY</span><b>JWT signed</b></div><div><span>STORAGE</span><b>MinIO</b></div><div><span>INTEGRITY</span><b>SHA-256</b></div><div><span>AUTHZ</span><b>RBAC</b></div></div></section></div>
- <div className="trust-strip"><ShieldCheck/><div><b>KAIRO treats evidence as a lifecycle.</b><span>Capture → version → fingerprint → verify → audit. The blockchain trust anchor will extend this chain without replacing the operational database or object store.</span></div></div></>
+ <div className="trust-strip"><ShieldCheck/><div><b>Evidence has a record, not just a location.</b><span>Capture → version → fingerprint → verify → audit. Selected trust proofs can be anchored independently without moving sensitive document bytes onto the ledger.</span></div></div></>
 }
 
 function SearchPage({setSelected}){
@@ -234,7 +210,7 @@ function Audit(){const [items,setItems]=useState([]),[error,setError]=useState("
  {error?<div className="error banner">{error}</div>:<section className="panel"><div className="table-head"><span>EVENT</span><span>ACTOR</span><span>RESULT</span><span>TIMESTAMP</span><span></span></div>{items.map(a=><div className="table-row" key={a.id}><div><b>{a.action.replaceAll("_"," ")}</b><span>{a.target_type} · {a.target_id}</span></div><span>#{a.actor_id??"SYSTEM"}</span><span className={["SUCCESS","VERIFIED"].includes(a.result)?"result-good":"result-neutral"}>{a.result}</span><span>{new Date(a.created_at).toLocaleString()}</span><ChevronRight/></div>)}</section>}</>}
 
 export default function App(){
- const [user,setUser]=useState(null),[page,setPage]=useState("overview"),[selected,setSelected]=useState(null),[checking,setChecking]=useState(true),[showCaseCreate,setShowCaseCreate]=useState(false);
+ const [user,setUser]=useState(null),[page,setPage]=useState(()=>localStorage.getItem("kairo_page")||"overview"),[selected,setSelected]=useState(null),[checking,setChecking]=useState(true),[showCaseCreate,setShowCaseCreate]=useState(false);
  useEffect(()=>{document.documentElement.dataset.theme="light"},[]);
  useEffect(()=>{
    const unauthorized=()=>{localStorage.removeItem("kairo_token");setUser(null);setSelected(null);setPage("overview")};
@@ -249,12 +225,14 @@ export default function App(){
  }
  function logout(){
    localStorage.removeItem("kairo_token");
+   localStorage.removeItem("kairo_page");
    setUser(null);setPage("overview");setSelected(null);
  }
  if(checking)return <div className="splash"><Logo/><span>Establishing secure session…</span></div>;
  if(!user)return <Login onLogin={completeLogin}/>;
  const content=selected?<CaseDetail id={selected} onBack={()=>setSelected(null)}/>:page==="overview"?<Overview user={user} setPage={setPage}/>:page==="cases"?<Cases setSelected={setSelected} user={user} onCreate={()=>setShowCaseCreate(true)}/>:page==="search"?<SearchPage setSelected={setSelected}/>:page==="integrity"?<Integrity/>:page==="trust"?<TrustLedger/>:page==="security"?<Security user={user}/>:page==="incidents"?<Incidents/>:page==="sharing"?<Sharing/>:page==="signatures"?<Signatures/>:page==="governance"?<Governance/>:page==="forensics"?<ForensicExport/>:user.role==="AUDITOR"?<Audit/>:<Overview user={user} setPage={setPage}/>;
- return <Shell user={user} page={selected?"case":page} setPage={p=>{setSelected(null);setPage(p)}} onLogout={logout}>{content}{showCaseCreate&&<CaseCreateModal onClose={()=>setShowCaseCreate(false)} onCreated={id=>{setShowCaseCreate(false);setSelected(id);setPage("cases")}}/>}</Shell>
+ useEffect(()=>{ if(user) localStorage.setItem("kairo_page", page); },[user,page]);
+ return <Shell user={user} page={selected?"case":page} setPage={p=>{setSelected(null);setPage(p);localStorage.setItem("kairo_page",p)}} onLogout={logout}>{content}{showCaseCreate&&<CaseCreateModal onClose={()=>setShowCaseCreate(false)} onCreated={id=>{setShowCaseCreate(false);setSelected(id);setPage("cases")}}/>}</Shell>
 }
 
 function CaseCreateModal({onClose,onCreated}){
