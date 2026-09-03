@@ -29,6 +29,14 @@ class Case(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     documents = relationship("Document", back_populates="case", cascade="all, delete-orphan")
 
+class CaseMember(Base):
+    __tablename__ = "case_members"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    case_id: Mapped[int] = mapped_column(ForeignKey("cases.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    membership_role: Mapped[str] = mapped_column(String(60), default="MEMBER")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
 class Document(Base):
     __tablename__ = "documents"
     id: Mapped[int] = mapped_column(primary_key=True)

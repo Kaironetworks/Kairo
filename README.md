@@ -367,3 +367,18 @@ KAIRO is being developed as a complete working prototype with an implementation 
 ## Kairo Networks
 
 **KAIRO — Key Assurance for Integrity and Reliability of Organizations**
+
+
+## Core completion
+
+The current release treats KAIRO as an evidence lifecycle system rather than a file repository. Core controls include authenticated access, case-scoped authorization, immutable evidence versions, SHA-256 verification, chain of custody, auditable security events, a local hash-chained trust ledger, optional Hyperledger Fabric anchoring, controlled account-bound sharing, cryptographic signatures, retention/legal hold, tamper incidents, and forensic export.
+
+Retention expiry is evaluated conservatively: an expired record becomes disposition-eligible only when no active legal hold protects it; KAIRO does not silently destroy evidence.
+
+### Demo accounts
+
+- `investigator` / `KairoDemo!2026`
+- `forensic` / `KairoDemo!2026`
+- `auditor` / `KairoDemo!2026`
+
+These are synthetic local demonstration identities only.

@@ -17,6 +17,26 @@ if (-not (Test-Path $venv)) {
   & $venv -m pip install -r (Join-Path $backend "requirements.txt")
 }
 
+
+$envFile = Join-Path $backend ".env"
+if (-not (Test-Path $envFile)) {
+  @"
+DATABASE_URL=postgresql+psycopg://kairo:kairo_dev_password@127.0.0.1:5433/kairo
+JWT_SECRET=KAIRO_LOCAL_DEMO_SECRET_CHANGE_BEFORE_DEPLOYMENT
+JWT_EXPIRE_MINUTES=120
+MINIO_ENDPOINT=http://127.0.0.1:9000
+MINIO_ACCESS_KEY=kairoadmin
+MINIO_SECRET_KEY=kairo_minio_password
+MINIO_BUCKET=kairo-documents
+CORS_ORIGINS=http://127.0.0.1:5173
+"@ | Set-Content $envFile
+  Write-Host "Created backend/.env for local development." -ForegroundColor Yellow
+}
+
+Push-Location $backend
+& $venv -m app.seed
+Pop-Location
+
 $frontend = Join-Path $Root "frontend"
 if (-not (Test-Path (Join-Path $frontend "node_modules"))) {
   Write-Host "Installing frontend dependencies..." -ForegroundColor Yellow

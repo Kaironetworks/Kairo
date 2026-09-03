@@ -5,22 +5,23 @@ import os
 import time
 import uuid
 import zipfile
+from pathlib import Path
 from collections import defaultdict, deque
 
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, text
 from sqlalchemy.orm import Session
 
 from .config import settings
 from .db import Base, engine, get_db
-from .models import User, Case, Document, DocumentVersion, AuditEvent
+from .models import User, Case, CaseMember, Document, DocumentVersion, AuditEvent
 from .schemas import (
     Token, UserOut, LoginIn, CaseCreateIn, CaseOut, DocumentOut,
     VersionOut, AuditOut, SearchResultOut,
 )
-from .security import current_user, create_token, verify_password
+from .security import current_user, create_token, verify_password, oauth2
 from .storage import ensure_bucket, put_bytes, get_bytes, delete_bytes
 from .authorization import Permission, require_permission, has_permission
 from .trust_ledger import ensure_ledger, anchor_audit_event, list_blocks, verify_ledger, document_anchors
@@ -73,11 +74,34 @@ app.add_middleware(
 @app.on_event("startup")
 def startup():
     Base.metadata.create_all(bind=engine)
-    ensure_bucket()
     with Session(engine) as db:
+        db.execute(text("CREATE TABLE IF NOT EXISTS revoked_sessions (jti VARCHAR(80) PRIMARY KEY, user_id BIGINT, revoked_at TIMESTAMPTZ NOT NULL DEFAULT NOW())"))
+        db.execute(text("CREATE SEQUENCE IF NOT EXISTS kairo_document_number_seq START WITH 1"))
+        db.execute(text("SELECT setval('kairo_document_number_seq', COALESCE((SELECT MAX(CAST(SUBSTRING(document_number FROM '[0-9]+$') AS BIGINT)) FROM documents),0) + 1, false)"))
+        db.execute(text("CREATE TABLE IF NOT EXISTS retention_dispositions (id BIGSERIAL PRIMARY KEY, document_id BIGINT UNIQUE NOT NULL, status VARCHAR(40) NOT NULL DEFAULT 'RETAINED', evaluated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), eligible_at TIMESTAMPTZ, disposed_at TIMESTAMPTZ, disposed_by BIGINT, reason TEXT NOT NULL DEFAULT '')"))
+        db.commit()
         ensure_ledger(db)
         ensure_incidents(db)
         ensure_governance(db)
+    try:
+        ensure_bucket()
+    except Exception:
+        # Database/API remain bootable while the evidence store is unavailable; health reports degradation.
+        pass
+
+def require_case_access(db: Session, user: User, case_id: int, *, write: bool = False):
+    case = require_case_access(db, user, case_id, write=True)
+    membership = db.scalar(select(CaseMember).where(CaseMember.case_id == case_id, CaseMember.user_id == user.id))
+    if not membership:
+        deny(db, user, "CASE_ACCESS", "CASE", case_id, "User is not assigned to this case")
+    return case
+
+def require_document_access(db: Session, user: User, document_id: int, *, write: bool = False):
+    doc = db.get(Document, document_id)
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    require_case_access(db, user, doc.case_id, write=write)
+    return doc
 
 
 def audit(
@@ -164,7 +188,9 @@ def health():
 @app.post("/api/auth/login", response_model=Token)
 def login(body: LoginIn, db: Session = Depends(get_db)):
     _check_login_rate_limit("anonymous:" + (body.email or "").lower().strip())
-    user = db.scalar(select(User).where(User.email == body.email.lower().strip()))
+    identifier = body.email.lower().strip()
+    email = identifier if "@" in identifier else f"{identifier}@kairo.local"
+    user = db.scalar(select(User).where(User.email == email))
 
     if not user or not verify_password(body.password, user.password_hash):
         audit(
@@ -172,7 +198,7 @@ def login(body: LoginIn, db: Session = Depends(get_db)):
             user,
             "LOGIN",
             "USER",
-            body.email,
+            identifier,
             "DENIED",
             "Invalid credentials",
         )
@@ -201,6 +227,18 @@ def login(body: LoginIn, db: Session = Depends(get_db)):
     )
     return Token(access_token=create_token(user))
 
+@app.post("/api/auth/logout")
+def logout(token: str = Depends(oauth2), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    try:
+        payload = __import__("jose").jwt.decode(token, settings.jwt_secret, algorithms=["HS256"], options={"verify_exp": False})
+        jti = payload.get("jti")
+    except Exception:
+        jti = None
+    if jti:
+        db.execute(text("INSERT INTO revoked_sessions(jti,user_id) VALUES(:j,:u) ON CONFLICT DO NOTHING"), {"j": jti, "u": user.id})
+        db.commit()
+    audit(db, user, "LOGOUT", "USER", user.id, "SUCCESS", "Session revoked")
+    return {"ok": True}
 
 @app.get("/api/auth/me", response_model=UserOut)
 def me(user: User = Depends(current_user)):
@@ -224,10 +262,11 @@ def dashboard(
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
+    case_ids = select(CaseMember.case_id).where(CaseMember.user_id == user.id)
     return {
-        "cases": db.scalar(select(func.count()).select_from(Case)) or 0,
-        "documents": db.scalar(select(func.count()).select_from(Document)) or 0,
-        "versions": db.scalar(select(func.count()).select_from(DocumentVersion)) or 0,
+        "cases": db.scalar(select(func.count()).select_from(Case).where(Case.id.in_(case_ids))) or 0,
+        "documents": db.scalar(select(func.count()).select_from(Document).where(Document.case_id.in_(case_ids))) or 0,
+        "versions": db.scalar(select(func.count()).select_from(DocumentVersion).join(Document).where(Document.case_id.in_(case_ids))) or 0,
         "audit_events": db.scalar(select(func.count()).select_from(AuditEvent)) or 0,
         "trust_blocks": db.execute(__import__("sqlalchemy").text("SELECT COUNT(*) FROM trust_blocks")).scalar() or 0,
         "role": user.role,
@@ -242,7 +281,7 @@ def cases(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission(Permission.CASE_READ)),
 ):
-    return list(db.scalars(select(Case).order_by(Case.created_at.desc())))
+    return list(db.scalars(select(Case).join(CaseMember, CaseMember.case_id == Case.id).where(CaseMember.user_id == user.id).order_by(Case.created_at.desc())))
 
 
 @app.post("/api/cases", response_model=CaseOut, status_code=201)
@@ -260,11 +299,42 @@ def create_case(
         raise HTTPException(422, "Priority must be HIGH, MEDIUM or LOW.")
     case = Case(case_number=case_number, title=body.title.strip(), description=body.description.strip(), priority=body.priority, station=body.station.strip(), status="UNDER_INVESTIGATION", is_demo=False)
     db.add(case)
+    db.flush()
+    db.add(CaseMember(case_id=case.id, user_id=user.id, membership_role="LEAD_INVESTIGATOR"))
     db.commit()
     db.refresh(case)
     audit(db, user, "CASE_CREATED", "CASE", case.id, "SUCCESS", json.dumps({"case_number": case.case_number}))
     return case
 
+
+@app.get("/api/cases/{case_id}/members")
+def case_members(case_id:int, db:Session=Depends(get_db), user:User=Depends(require_permission(Permission.CASE_READ))):
+    require_case_access(db,user,case_id)
+    rows=db.execute(text("SELECT cm.id,cm.case_id,cm.user_id,cm.membership_role,cm.created_at,u.email,u.full_name,u.role FROM case_members cm JOIN users u ON u.id=cm.user_id WHERE cm.case_id=:c ORDER BY cm.created_at"), {"c":case_id}).mappings().all()
+    return [dict(r) for r in rows]
+
+@app.post("/api/cases/{case_id}/members")
+def add_case_member(case_id:int, body:dict, db:Session=Depends(get_db), user:User=Depends(require_permission(Permission.CASE_MEMBER_MANAGE))):
+    require_case_access(db,user,case_id,write=True)
+    identifier=str(body.get("user_id") or body.get("email") or "").strip().lower()
+    if not identifier: raise HTTPException(400,"user_id or email is required")
+    target=db.scalar(select(User).where((User.email==identifier) | (User.id==int(identifier) if identifier.isdigit() else False)))
+    if not target or not target.is_active: raise HTTPException(404,"Active user not found")
+    existing=db.scalar(select(CaseMember).where(CaseMember.case_id==case_id,CaseMember.user_id==target.id))
+    if existing: return {"ok":True,"existing":True,"member_id":existing.id}
+    role=str(body.get("membership_role","MEMBER")).strip().upper()[:60]
+    row=CaseMember(case_id=case_id,user_id=target.id,membership_role=role)
+    db.add(row); db.commit(); db.refresh(row)
+    audit(db,user,"CASE_MEMBER_ADDED","CASE",case_id,"SUCCESS",json.dumps({"user_id":target.id,"role":role}))
+    return {"ok":True,"existing":False,"member_id":row.id,"user_id":target.id,"email":target.email,"membership_role":role}
+
+@app.delete("/api/cases/{case_id}/members/{member_id}")
+def remove_case_member(case_id:int,member_id:int,db:Session=Depends(get_db),user:User=Depends(require_permission(Permission.CASE_MEMBER_MANAGE))):
+    require_case_access(db,user,case_id,write=True)
+    row=db.scalar(select(CaseMember).where(CaseMember.id==member_id,CaseMember.case_id==case_id))
+    if not row: raise HTTPException(404,"Case member not found")
+    if row.user_id==user.id: raise HTTPException(400,"Lead user cannot remove their own case access")
+    db.delete(row); db.commit(); audit(db,user,"CASE_MEMBER_REMOVED","CASE",case_id,"SUCCESS",json.dumps({"member_id":member_id,"user_id":row.user_id})); return {"ok":True}
 
 @app.get(
     "/api/cases/{case_id}",
@@ -275,9 +345,7 @@ def case_detail(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission(Permission.CASE_READ)),
 ):
-    item = db.get(Case, case_id)
-    if not item:
-        raise HTTPException(404, "Case not found")
+    item = require_case_access(db, user, case_id)
     return item
 
 
@@ -290,8 +358,7 @@ def case_documents(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission(Permission.DOCUMENT_READ)),
 ):
-    if not db.get(Case, case_id):
-        raise HTTPException(404, "Case not found")
+    require_case_access(db, user, case_id)
 
     return list(
         db.scalars(
@@ -320,8 +387,10 @@ def search(
         .join(Case, Document.case_id == Case.id)
         .outerjoin(latest, (latest.c.document_id == Document.id) & (latest.c.rn == 1))
         .order_by(Document.created_at.desc()).offset(offset).limit(limit))
-    filters=[]
-    if case_id is not None: filters.append(Document.case_id == case_id)
+    filters=[Document.case_id.in_(select(CaseMember.case_id).where(CaseMember.user_id == user.id))]
+    if case_id is not None:
+        require_case_access(db, user, case_id)
+        filters.append(Document.case_id == case_id)
     if document_type: filters.append(Document.document_type == document_type.upper())
     if classification: filters.append(Document.classification == classification.upper())
     if q:
@@ -349,6 +418,7 @@ def document_detail(
     doc = db.get(Document, document_id)
     if not doc:
         raise HTTPException(404, "Document not found")
+    require_case_access(db, user, doc.case_id)
     return doc
 
 
@@ -361,8 +431,7 @@ def document_versions(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission(Permission.DOCUMENT_READ)),
 ):
-    if not db.get(Document, document_id):
-        raise HTTPException(404, "Document not found")
+    require_document_access(db, user, document_id)
 
     return list(
         db.scalars(
@@ -411,10 +480,10 @@ async def upload_document(
         raise HTTPException(413, "File exceeds the 25 MB prototype upload limit.")
 
     sha = hashlib.sha256(data).hexdigest()
-    count = db.scalar(select(func.count()).select_from(Document)) or 0
+    next_number = db.execute(text("SELECT nextval('kairo_document_number_seq')")).scalar_one()
 
     doc = Document(
-        document_number=f"KAIRO-DOC-{count + 1:05d}",
+        document_number=f"KAIRO-DOC-{int(next_number):05d}",
         case_id=case_id,
         title=title,
         document_type=document_type,
@@ -484,9 +553,9 @@ async def create_document_version(
     Existing versions are never overwritten. The new object is stored under
     a new versioned object key and gets its own SHA-256 fingerprint.
     """
-    doc = db.get(Document, document_id)
-    if not doc:
-        raise HTTPException(404, "Document not found")
+    doc = require_document_access(db, user, document_id, write=True)
+    # Serialize version allocation per document; PostgreSQL advisory locks are transaction-scoped.
+    db.execute(text("SELECT pg_advisory_xact_lock(:doc_id)"), {"doc_id": document_id})
 
     data = await file.read()
     if not data:
@@ -558,9 +627,7 @@ def verify_document(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission(Permission.DOCUMENT_VERIFY)),
 ):
-    doc = db.get(Document, document_id)
-    if not doc:
-        raise HTTPException(404, "Document not found")
+    doc = require_document_access(db, user, document_id)
 
     version = db.scalar(
         select(DocumentVersion)
@@ -571,7 +638,11 @@ def verify_document(
     if not version:
         raise HTTPException(404, "Document has no version")
 
-    data = get_bytes(version.object_key)
+    try:
+        data = get_bytes(version.object_key)
+    except Exception as exc:
+        audit(db, user, "INTEGRITY_VERIFY", "DOCUMENT", doc.id, "STORAGE_UNAVAILABLE", json.dumps({"version": version.version, "error": str(exc)}))
+        return {"document_id": doc.id, "version": version.version, "expected_sha256": version.sha256, "observed_sha256": None, "verified": False, "result": "STORAGE_UNAVAILABLE", "custody": None, "incident_id": None}
     observed = hashlib.sha256(data).hexdigest()
     verified = observed == version.sha256
     result = "VERIFIED" if verified else "FAILED"
@@ -621,9 +692,11 @@ def verify_document(
 def incidents(
     status: str | None = None,
     db: Session = Depends(get_db),
-    user: User = Depends(current_user),
+    user: User = Depends(require_permission(Permission.INCIDENT_READ)),
 ):
-    return list_incidents(db, status=status)
+    rows = list_incidents(db, status=status)
+    allowed = {c.id for c in db.scalars(select(Case).join(CaseMember, CaseMember.case_id == Case.id).where(CaseMember.user_id == user.id))}
+    return [r for r in rows if db.scalar(select(Document.case_id).where(Document.id == r["document_id"])) in allowed]
 
 
 @app.post("/api/incidents/{incident_id}/resolve")
@@ -631,8 +704,11 @@ def incident_resolve(
     incident_id: int,
     body: dict,
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission(Permission.TRUST_READ)),
+    user: User = Depends(require_permission(Permission.INCIDENT_RESOLVE)),
 ):
+    incident = db.execute(text("SELECT document_id FROM security_incidents WHERE id=:id"), {"id": incident_id}).first()
+    if not incident: raise HTTPException(404, "Incident not found")
+    require_document_access(db, user, incident[0], write=True)
     resolution = str(body.get("resolution", "")).strip()
     if len(resolution) < 8:
         raise HTTPException(400, "Resolution must contain at least 8 characters")
@@ -655,9 +731,7 @@ def blockchain_anchor_document(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission(Permission.TRUST_READ)),
 ):
-    doc = db.get(Document, document_id)
-    if not doc:
-        raise HTTPException(404, "Document not found")
+    doc = require_document_access(db, user, document_id)
     custody = build_custody_record(db, document_id, verify_bytes=True)
     if not custody:
         raise HTTPException(404, "Document has no custody record")
@@ -689,9 +763,7 @@ def blockchain_anchor_document_read(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission(Permission.TRUST_READ)),
 ):
-    doc = db.get(Document, document_id)
-    if not doc:
-        raise HTTPException(404, "Document not found")
+    doc = require_document_access(db, user, document_id)
     version = db.scalar(select(DocumentVersion).where(DocumentVersion.document_id == document_id).order_by(DocumentVersion.version.desc()))
     if not version:
         raise HTTPException(404, "Document has no version")
@@ -730,6 +802,7 @@ def document_custody(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission(Permission.DOCUMENT_VERIFY)),
 ):
+    require_document_access(db, user, document_id)
     record = build_custody_record(db, document_id, verify_bytes=True)
     if record is None:
         raise HTTPException(404, "Document not found")
@@ -742,9 +815,7 @@ def document_trust(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission(Permission.TRUST_READ)),
 ):
-    doc = db.get(Document, document_id)
-    if not doc:
-        raise HTTPException(404, "Document not found")
+    doc = require_document_access(db, user, document_id)
     return {"document_id": document_id, "anchors": document_anchors(db, document_id)}
 
 
@@ -755,8 +826,8 @@ def collaborators(db: Session = Depends(get_db), user: User = Depends(require_pe
     return [dict(r) for r in rows]
 
 @app.post("/api/documents/{document_id}/shares")
-def share_document(document_id:int, body:dict, db:Session=Depends(get_db), user:User=Depends(require_permission(Permission.DOCUMENT_READ))):
-    doc=db.get(Document,document_id)
+def share_document(document_id:int, body:dict, db:Session=Depends(get_db), user:User=Depends(require_permission(Permission.SHARE_CREATE))):
+    doc=require_document_access(db,user,document_id,write=True)
     if not doc: raise HTTPException(404,"Document not found")
     target=db.scalar(select(User).where(User.email==str(body.get("email","")).lower().strip()))
     if not target or not target.is_active: raise HTTPException(404,"Authorized collaborator not found")
@@ -795,15 +866,15 @@ def download_shared_document(share_id:int, db:Session=Depends(get_db), user:User
     return Response(content=data,media_type=row["content_type"],headers={"Content-Disposition":f'attachment; filename="{row["original_filename"]}"'})
 
 @app.post("/api/shares/{share_id}/revoke")
-def revoke_document_share(share_id:int, db:Session=Depends(get_db), user:User=Depends(require_permission(Permission.DOCUMENT_READ))):
+def revoke_document_share(share_id:int, db:Session=Depends(get_db), user:User=Depends(require_permission(Permission.SHARE_REVOKE))):
     row=revoke_share(db,share_id,user.id)
     if not row: raise HTTPException(404,"Share not found or not owned by you")
     audit(db,user,"DOCUMENT_SHARE_REVOKE","SHARE",share_id,"SUCCESS","")
     return {"ok":True,"id":share_id}
 
 @app.post("/api/documents/{document_id}/sign")
-def sign_document(document_id:int, db:Session=Depends(get_db), user:User=Depends(require_permission(Permission.DOCUMENT_VERSION_CREATE))):
-    doc=db.get(Document,document_id)
+def sign_document(document_id:int, db:Session=Depends(get_db), user:User=Depends(require_permission(Permission.SIGN))):
+    doc=require_document_access(db,user,document_id,write=True)
     if not doc: raise HTTPException(404,"Document not found")
     version=db.scalar(select(DocumentVersion).where(DocumentVersion.document_id==document_id).order_by(DocumentVersion.version.desc()))
     if not version: raise HTTPException(404,"Document has no version")
@@ -813,11 +884,13 @@ def sign_document(document_id:int, db:Session=Depends(get_db), user:User=Depends
     return {"id":result["id"],"document_id":document_id,"version":version.version,"signer_id":user.id,"signer_email":user.email,"algorithm":result["algorithm"],"signed_hash":version.sha256,"created_at":result["created_at"],"existing":bool(result.get("existing", False))}
 
 @app.get("/api/documents/{document_id}/signatures")
-def signatures(document_id:int, db:Session=Depends(get_db), user:User=Depends(require_permission(Permission.DOCUMENT_READ))):
+def signatures(document_id:int, db:Session=Depends(get_db), user:User=Depends(require_permission(Permission.SIGNATURE_READ))):
+    require_document_access(db,user,document_id)
     return [{k:v for k,v in x.items() if k not in {"signature_b64","public_key_pem"}} for x in list_signatures(db,document_id)]
 
 @app.post("/api/documents/{document_id}/signatures/{signature_id}/verify")
 def verify_document_signature(document_id:int,signature_id:int,db:Session=Depends(get_db),user:User=Depends(require_permission(Permission.DOCUMENT_VERIFY))):
+    require_document_access(db,user,document_id)
     sig=db.execute(__import__("sqlalchemy").text("SELECT * FROM document_signatures WHERE id=:i AND document_id=:d"),{"i":signature_id,"d":document_id}).mappings().first()
     if not sig: raise HTTPException(404,"Signature not found")
     version=db.scalar(select(DocumentVersion).where(DocumentVersion.document_id==document_id,DocumentVersion.version==sig["version"]))
@@ -828,13 +901,13 @@ def verify_document_signature(document_id:int,signature_id:int,db:Session=Depend
     return {"verified":ok,"signature_id":signature_id,"version":sig["version"],"current_bytes_match_signed_hash":version.sha256==sig["signed_hash"]}
 
 @app.get("/api/documents/{document_id}/governance")
-def get_governance(document_id:int,db:Session=Depends(get_db),user:User=Depends(require_permission(Permission.DOCUMENT_READ))):
-    if not db.get(Document,document_id): raise HTTPException(404,"Document not found")
+def get_governance(document_id:int,db:Session=Depends(get_db),user:User=Depends(require_permission(Permission.GOVERNANCE_READ))):
+    require_document_access(db,user,document_id)
     return governance(db,document_id)
 
 @app.post("/api/documents/{document_id}/retention")
-def retention(document_id:int,body:dict,db:Session=Depends(get_db),user:User=Depends(require_permission(Permission.DOCUMENT_VERSION_CREATE))):
-    if not db.get(Document,document_id): raise HTTPException(404,"Document not found")
+def retention(document_id:int,body:dict,db:Session=Depends(get_db),user:User=Depends(require_permission(Permission.GOVERNANCE_MANAGE))):
+    require_document_access(db,user,document_id,write=True)
     try: until=datetime.fromisoformat(str(body.get("retain_until")).replace("Z","+00:00"))
     except Exception: raise HTTPException(400,"retain_until must be an ISO timestamp")
     if until <= datetime.now(timezone.utc): raise HTTPException(400,"Retention date must be in the future")
@@ -843,19 +916,49 @@ def retention(document_id:int,body:dict,db:Session=Depends(get_db),user:User=Dep
     return row
 
 @app.post("/api/documents/{document_id}/legal-hold")
-def legal_hold(document_id:int,body:dict,db:Session=Depends(get_db),user:User=Depends(require_permission(Permission.DOCUMENT_VERSION_CREATE))):
-    if not db.get(Document,document_id): raise HTTPException(404,"Document not found")
+def legal_hold(document_id:int,body:dict,db:Session=Depends(get_db),user:User=Depends(require_permission(Permission.GOVERNANCE_MANAGE))):
+    require_document_access(db,user,document_id,write=True)
     active=bool(body.get("active",True)); reason=str(body.get("reason","Legal hold requested"))
     row=set_hold(db,document_id,active,reason,user.id)
     audit(db,user,"LEGAL_HOLD_SET" if active else "LEGAL_HOLD_RELEASE","DOCUMENT",document_id,"SUCCESS",json.dumps({"active":active,"reason":reason}))
     return row
 
 @app.get("/api/governance/summary")
-def governance_summary(db:Session=Depends(get_db),user:User=Depends(require_permission(Permission.DOCUMENT_READ))):
+def governance_summary(db:Session=Depends(get_db),user:User=Depends(require_permission(Permission.GOVERNANCE_READ))):
     return {"active_legal_holds":db.execute(__import__("sqlalchemy").text("SELECT COUNT(*) FROM legal_holds WHERE active=TRUE")).scalar() or 0,
             "retention_policies":db.execute(__import__("sqlalchemy").text("SELECT COUNT(*) FROM retention_policies")).scalar() or 0,
             "active_shares":db.execute(__import__("sqlalchemy").text("SELECT COUNT(*) FROM document_shares WHERE revoked_at IS NULL AND expires_at>NOW()")).scalar() or 0,
             "signatures":db.execute(__import__("sqlalchemy").text("SELECT COUNT(*) FROM document_signatures")).scalar() or 0}
+
+@app.post("/api/governance/retention/scan")
+def retention_scan(db: Session = Depends(get_db), user: User = Depends(require_permission(Permission.GOVERNANCE_MANAGE))):
+    """Evaluate retention expiry without silently deleting evidence. Expired, unheld records become disposition-eligible."""
+    rows = db.execute(text("""
+        SELECT d.id, rp.retain_until, COALESCE(lh.active,FALSE) AS hold_active
+        FROM documents d JOIN retention_policies rp ON rp.document_id=d.id
+        LEFT JOIN legal_holds lh ON lh.document_id=d.id
+        WHERE rp.retain_until <= NOW()
+    """)).mappings().all()
+    eligible = 0
+    protected = 0
+    for row in rows:
+        status = "PROTECTED_BY_LEGAL_HOLD" if row["hold_active"] else "ELIGIBLE_FOR_DISPOSITION"
+        if row["hold_active"]: protected += 1
+        else: eligible += 1
+        db.execute(text("""INSERT INTO retention_dispositions(document_id,status,eligible_at,reason) VALUES(:d,:s,CASE WHEN :s='ELIGIBLE_FOR_DISPOSITION' THEN NOW() ELSE NULL END,:r) ON CONFLICT(document_id) DO UPDATE SET status=:s,evaluated_at=NOW(),eligible_at=CASE WHEN :s='ELIGIBLE_FOR_DISPOSITION' THEN NOW() ELSE retention_dispositions.eligible_at END,reason=:r"""), {"d":row["id"],"s":status,"r":"Retention evaluation; legal hold evaluated before disposition."})
+    db.commit()
+    audit(db,user,"RETENTION_SCAN","GOVERNANCE","GLOBAL","SUCCESS",json.dumps({"evaluated":len(rows),"eligible":eligible,"protected":protected}))
+    return {"evaluated":len(rows),"eligible_for_disposition":eligible,"protected_by_legal_hold":protected}
+
+@app.get("/api/governance/dispositions")
+def dispositions(db: Session = Depends(get_db), user: User = Depends(require_permission(Permission.GOVERNANCE_READ))):
+    rows = db.execute(select(Document.id, Document.document_number, Document.title, Document.case_id).join(CaseMember, CaseMember.case_id == Document.case_id).where(CaseMember.user_id == user.id)).all()
+    allowed = {r[0]: {"document_number": r[1], "title": r[2], "case_id": r[3]} for r in rows}
+    result=[]
+    for r in db.execute(text("SELECT * FROM retention_dispositions ORDER BY evaluated_at DESC")).mappings().all():
+        if r["document_id"] in allowed:
+            result.append({**dict(r), **allowed[r["document_id"]]})
+    return result
 
 @app.get("/api/documents/{document_id}/forensic-export")
 def forensic_export(
@@ -865,9 +968,7 @@ def forensic_export(
     user: User = Depends(require_permission(Permission.DOCUMENT_DOWNLOAD)),
 ):
     """Build a portable integrity-oriented evidence package."""
-    doc = db.get(Document, document_id)
-    if not doc:
-        raise HTTPException(404, "Document not found")
+    doc = require_document_access(db, user, document_id)
     case = db.get(Case, doc.case_id)
     versions = list(db.scalars(select(DocumentVersion).where(DocumentVersion.document_id == document_id).order_by(DocumentVersion.version.asc())))
     if not versions:
@@ -902,7 +1003,7 @@ def forensic_export(
 @app.get("/api/security/posture")
 def security_posture(user: User = Depends(current_user)):
     return {
-        "authentication":"JWT","authorization":"RBAC","storage":"MinIO + PostgreSQL metadata","integrity":"SHA-256","custody":"Authorized lifecycle events","trust_ledger":"SHA-256 chained audit events","blockchain":blockchain_status(),"digital_signatures":"RSA-PSS-SHA256","sharing":"Authenticated account-bound, expiring, revocable","governance":"Retention + legal hold","upload_limit_mb":25,"response_hardening":["X-Content-Type-Options","X-Frame-Options","Referrer-Policy","no-store"],"login_rate_limit":{"window_seconds":_LOGIN_WINDOW,"max_attempts":_LOGIN_MAX_ATTEMPTS}
+        "authentication":"JWT (with revocable sessions)","authorization":"RBAC","storage":"MinIO + PostgreSQL metadata","integrity":"SHA-256","custody":"Authorized lifecycle events","trust_ledger":"SHA-256 chained audit events","blockchain":blockchain_status(),"digital_signatures":"RSA-PSS-SHA256","sharing":"Authenticated account-bound, expiring, revocable","governance":"Retention + legal hold","upload_limit_mb":25,"response_hardening":["X-Content-Type-Options","X-Frame-Options","Referrer-Policy","no-store"],"login_rate_limit":{"window_seconds":_LOGIN_WINDOW,"max_attempts":_LOGIN_MAX_ATTEMPTS}
     }
 
 @app.get(
@@ -947,9 +1048,7 @@ def download_document(
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
-    doc = db.get(Document, document_id)
-    if not doc:
-        raise HTTPException(404, "Document not found")
+    doc = require_document_access(db, user, document_id)
 
     # Auditors can inspect metadata and verify integrity, but cannot
     # retrieve restricted document bytes.

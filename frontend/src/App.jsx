@@ -26,18 +26,18 @@ function Login({onLogin}){
  </main>
 }
 
-function TrustContext({user,onClose}){
+function TrustContext({user,onClose,mode="trust"}){
  useEffect(()=>{const onKey=e=>{if(e.key==="Escape")onClose()};window.addEventListener("keydown",onKey);return()=>window.removeEventListener("keydown",onKey)},[onClose]);
  return <div className="context-backdrop" role="presentation" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><section className="context-modal" role="dialog" aria-modal="true" aria-labelledby="trust-title">
-  <div className="context-head"><div><div className="eyebrow">SESSION SECURITY</div><h2 id="trust-title">Trust context</h2></div><button className="icon-btn" onClick={onClose} aria-label="Close trust context"><X size={17}/></button></div>
-  <div className="context-status"><span className="context-status-dot"/>AUTHENTICATED</div>
+  <div className="context-head"><div><div className="eyebrow">{mode==="identity"?"IDENTITY CONTEXT":"SESSION SECURITY"}</div><h2 id="trust-title">{mode==="identity"?"Signed identity":"Trust context"}</h2></div><button className="icon-btn" onClick={onClose} aria-label="Close trust context"><X size={17}/></button></div>
+  <div className="context-status"><span className="context-status-dot"/>{mode==="identity"?"IDENTITY VERIFIED":"AUTHENTICATED"}</div>
   <div className="context-grid"><div><span>IDENTITY</span><b>{user.full_name}</b></div><div><span>ROLE</span><b>{roleLabel(user.role)}</b></div><div><span>SESSION</span><b>Authenticated</b></div><div><span>AUTHORIZATION</span><b>Role-based policy active</b></div></div>
-  <p className="context-note">Protected actions are evaluated by the KAIRO API. The interface does not define your access.</p>
+  <p className="context-note">{mode==="identity"?"This identity is bound to the authenticated session. Role and case access are enforced by the KAIRO API.":"Protected actions are evaluated by the KAIRO API. The interface does not define your access."}</p>
  </section></div>
 }
 
 function Shell({user,page,setPage,onLogout,children}){
- const [open,setOpen]=useState(false),[showContext,setShowContext]=useState(false);
+ const [open,setOpen]=useState(false),[context,setContext]=useState(null);
  const nav=[
   ["overview","Overview",Activity],
   ["cases","Investigations",Search],
@@ -45,7 +45,8 @@ function Shell({user,page,setPage,onLogout,children}){
   ["integrity","Verification",Fingerprint],
   ["trust","Trust ledger",Blocks],
   ["security","Security",ShieldAlert],
-  ...(user.role!=="AUDITOR"?[["incidents","Incidents",AlertTriangle],["sharing","Secure sharing",ExternalLink],["signatures","Signatures",KeyRound],["forensics","Forensic export",FileArchive]]:[]),
+  ["incidents","Incidents",AlertTriangle],
+  ...(user.role!=="AUDITOR"?[["sharing","Secure sharing",ExternalLink],["signatures","Signatures",KeyRound],["forensics","Forensic export",FileArchive]]:[]),
   ["governance","Governance",LockKeyhole],
   ...(user.role==="AUDITOR"?[["audit","Audit trail",History]]:[])
  ];
@@ -53,12 +54,12 @@ function Shell({user,page,setPage,onLogout,children}){
   <div className="side-head"><Logo/><button className="icon-btn mobile" onClick={()=>setOpen(false)} aria-label="Close navigation"><X/></button></div>
   <div className="side-context"><span>SECURE OPERATIONS</span><b>{roleLabel(user.role)}</b><small>Authorised workspace</small></div>
   <div className="nav-scroll">{nav.map(([id,l,I])=><button key={id} className={"nav-item "+(page===id?"active":"")} onClick={()=>{setPage(id);setOpen(false)}} aria-current={page===id?"page":undefined}><I size={18}/><span>{l}</span><ChevronRight size={14}/></button>)}</div>
-  <div className="side-bottom"><button className="secure-box" onClick={()=>setShowContext(true)} aria-label="Open trust context"><span className="secure-dot"/><div><b>Trust context</b><span>Authenticated · policy enforced</span></div><ChevronRight size={14}/></button><button className="nav-item logout" onClick={onLogout}><LogOut size={18}/><span>Sign out</span></button></div>
+  <div className="side-bottom"><button className="secure-box" onClick={()=>setContext("trust")} aria-label="Open trust context"><span className="secure-dot"/><div><b>Trust context</b><span>Authenticated · policy enforced</span></div><ChevronRight size={14}/></button><button className="nav-item logout" onClick={onLogout}><LogOut size={18}/><span>Sign out</span></button></div>
  </aside>
  <div className="main"><header className="appbar"><button className="icon-btn mobile" onClick={()=>setOpen(true)} aria-label="Open navigation"><Menu/></button><div className="crumb"><span>KAIRO</span><i>/</i><b>{page}</b></div>
-  <div className="header-actions"><button className="identity identity-button" onClick={()=>setShowContext(true)} aria-label="Open trust context"><div className="avatar" aria-hidden="true">{(user.full_name||"KAIRO").split(/\s+/).filter(Boolean).map(x=>x[0]).join("").slice(0,2).toUpperCase()}</div><div><b>{user.full_name}</b><span>{roleLabel(user.role)}</span></div></button></div>
+  <div className="header-actions"><button className="identity identity-button" onClick={()=>setContext("identity")} aria-label="Open identity context"><div className="avatar" aria-hidden="true">{(user.full_name||"KAIRO").split(/\s+/).filter(Boolean).map(x=>x[0]).join("").slice(0,2).toUpperCase()}</div><div><b>{user.full_name}</b><span>{roleLabel(user.role)}</span></div></button></div>
  </header><div className="content">{children}</div></div>
- {showContext&&<TrustContext user={user} onClose={()=>setShowContext(false)}/>}
+ {context&&<TrustContext user={user} mode={context} onClose={()=>setContext(null)}/>}
  </div>
 }
 function PageTitle({eyebrow,title,desc,action}){return <div className="page-title"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1><p>{desc}</p></div>{action&&<div>{action}</div>}</div>}
@@ -107,15 +108,18 @@ function Cases({setSelected,onCreate,user}){
  {loading?<Empty>Loading registry…</Empty>:items.map(c=><button className="table-row" key={c.id} onClick={()=>setSelected(c.id)}><div><b>{c.case_number}</b><span>{c.title}</span></div><span className="pill success">{c.status.replaceAll("_"," ")}</span><span className="pill high">{c.priority}</span><span>{c.station}</span><ChevronRight/></button>)}</section></>
 }
 
-function CaseDetail({id,onBack}){
- const [data,setData]=useState(null),[docs,setDocs]=useState([]),[selected,setSelected]=useState(null),[versions,setVersions]=useState([]),[anchors,setAnchors]=useState([]),[custody,setCustody]=useState(null),[verify,setVerify]=useState(null),[showUpload,setShowUpload]=useState(false);
- async function load(){const [c,d]=await Promise.all([api.case(id),api.documents(id)]);setData(c);setDocs(d)}
+function CaseDetail({id,onBack,user}){
+ const [data,setData]=useState(null),[docs,setDocs]=useState([]),[members,setMembers]=useState([]),[selected,setSelected]=useState(null),[versions,setVersions]=useState([]),[anchors,setAnchors]=useState([]),[custody,setCustody]=useState(null),[verify,setVerify]=useState(null),[showUpload,setShowUpload]=useState(false),[memberEmail,setMemberEmail]=useState(""),[memberBusy,setMemberBusy]=useState(false),[memberMsg,setMemberMsg]=useState("");
+ async function load(){const [c,d,m]=await Promise.all([api.case(id),api.documents(id),api.caseMembers(id)]);setData(c);setDocs(d);setMembers(m)}
  useEffect(()=>{load()},[id]);
+ async function addMember(){if(!memberEmail.trim())return;setMemberBusy(true);setMemberMsg("");try{await api.addCaseMember(id,{email:memberEmail.trim()});setMemberEmail("");setMemberMsg("Case access granted.");setMembers(await api.caseMembers(id))}catch(e){setMemberMsg(e.message)}finally{setMemberBusy(false)}}
+ async function removeMember(memberId){setMemberBusy(true);setMemberMsg("");try{await api.removeCaseMember(id,memberId);setMemberMsg("Case access removed.");setMembers(await api.caseMembers(id))}catch(e){setMemberMsg(e.message)}finally{setMemberBusy(false)}}
  async function inspect(d){setSelected(d);setVerify(null);const [v,t,c]=await Promise.all([api.versions(d.id),api.documentTrust(d.id),api.custody(d.id)]);setVersions(v);setAnchors(t.anchors||[]);setCustody(c)}
  async function verifyDoc(){setVerify({busy:true});try{setVerify(await api.verify(selected.id))}catch(e){setVerify({error:e.message})}}
  if(!data)return <div className="loading">Loading investigation…</div>;
  return <><button className="back-btn" onClick={onBack}>← Cases</button><PageTitle eyebrow={data.case_number} title={data.title} desc={data.description} action={<button className="primary" onClick={()=>setShowUpload(true)}><UploadCloud size={16}/>Add evidence</button>}/>
  <div className="case-banner"><div><span>LOCATION</span><b>{data.station}</b></div><div><span>STATUS</span><b>{data.status.replaceAll("_"," ")}</b></div><div><span>PRIORITY</span><b>{data.priority}</b></div><div><span>CASE ID</span><b>#{data.id}</b></div></div>
+ <section className="panel case-access"><PanelHead title="Case access" action={<span className="panel-meta">Server-enforced membership</span>}/><div className="member-list">{members.map(m=><div className="member-row" key={m.id}><div><b>{m.full_name}</b><span>{m.email} · {roleLabel(m.role)} · {m.membership_role}</span></div>{m.user_id!==user?.id&&user?.role==="INVESTIGATING_OFFICER"&&<button className="text-btn" onClick={()=>removeMember(m.id)} disabled={memberBusy}>Remove</button>}</div>)}</div>{user?.role==="INVESTIGATING_OFFICER"&&<div className="inline-form"><input value={memberEmail} onChange={e=>setMemberEmail(e.target.value)} placeholder="Authorized user email"/><button className="primary" onClick={addMember} disabled={memberBusy}>{memberBusy?"Updating…":"Grant case access"}</button></div>}{memberMsg&&<div className="notice">{memberMsg}</div>}</section>
  <section className="panel"><PanelHead title="Evidence collection" action={<span className="panel-meta">{docs.length} document{docs.length!==1?"s":""}</span>}/>{docs.length?docs.map(d=><div className="doc-row" key={d.id}><div className="doc-icon"><FileCheck2/></div><div className="doc-main"><b>{d.document_number} · {d.title}</b><span>{d.document_type} · {d.classification} · Version {d.current_version}</span></div><button className="secondary" onClick={()=>inspect(d)}><Eye size={15}/>Inspect</button></div>):<Empty/>}</section>
  {selected&&<EvidenceInspector doc={selected} versions={versions} anchors={anchors} custody={custody} verify={verify} onVerify={verifyDoc} onClose={()=>setSelected(null)} onVersion={async file=>{await api.newVersion(selected.id,file);await inspect(selected);await load()}}/>}
  {showUpload&&<UploadModal caseId={id} onClose={()=>setShowUpload(false)} onDone={()=>{setShowUpload(false);load()}}/>}</>
@@ -199,14 +203,14 @@ function TrustLedger(){
  <div className="trust-strip"><Blocks/><div><b>Two trust layers</b><span>KAIRO's local chain detects audit-history changes; Hyperledger Fabric provides an independent permissioned ledger anchor for selected evidence proofs.</span></div></div></>
 }
 
-function Incidents(){
+function Incidents({user}){
  const [items,setItems]=useState([]),[loading,setLoading]=useState(true),[filter,setFilter]=useState("OPEN"),[busy,setBusy]=useState(null),[msg,setMsg]=useState("");
  async function load(){setLoading(true);setMsg("");try{setItems(await api.incidents(filter))}catch(e){setMsg(e.message)}finally{setLoading(false)}}
  useEffect(()=>{load()},[filter]);
  async function resolve(id){const resolution=window.prompt("Resolution / analyst action:","Evidence restored from controlled backup after incident investigation.");if(!resolution)return;setBusy(id);try{await api.resolveIncident(id,resolution);await load()}catch(e){setMsg(e.message)}finally{setBusy(null)}}
  return <><PageTitle eyebrow="INCIDENT RESPONSE" title="Security incidents" desc="KAIRO separates a legitimate authorized evidence change from a later modification that has no corresponding authorized custody event." action={<div className="actions"><select className="select" value={filter} onChange={e=>setFilter(e.target.value)}><option value="OPEN">Open incidents</option><option value="RESOLVED">Resolved incidents</option><option value="">All incidents</option></select><button className="secondary" onClick={load}><RefreshCw size={15}/>Refresh</button></div>}/>
  {msg&&<div className="error banner">{msg}</div>}
- {loading?<div className="loading">Loading incident register…</div>:items.length?items.map(i=><section className="panel incident-card" key={i.id}><div className="incident-top"><div><span className="eyebrow">INCIDENT #{i.id}</span><h3>{i.incident_type.replaceAll("_"," ")}</h3></div><span className={"pill "+(i.status==="OPEN"?"danger":"success")}>{i.status}</span></div><div className="incident-grid"><div><span>DOCUMENT</span><b>KAIRO-DOC-{String(i.document_id).padStart(5,"0")}</b></div><div><span>VERSION</span><b>V{i.version}</b></div><div><span>SEVERITY</span><b>{i.severity}</b></div><div><span>DETECTED BY</span><b>Authenticated KAIRO user #{i.detected_by??"—"}</b></div></div><p className="incident-explain">{i.explanation}</p><div className="hash-pair"><div><span>REGISTERED SHA-256</span><code>{i.expected_sha256}</code></div><div><span>OBSERVED SHA-256</span><code>{i.observed_sha256}</code></div></div>{i.status==="OPEN"&&<div className="incident-actions"><span><ShieldAlert size={15}/> Do not treat the detector as proof of attacker identity.</span><button className="primary" disabled={busy===i.id} onClick={()=>resolve(i.id)}>{busy===i.id?"Resolving…":"Record resolution"}</button></div>}{i.status==="RESOLVED"&&<div className="resolved-note">Resolution: {i.resolution}</div>}</section>):<div className="empty">No incidents in this view.</div>}
+ {loading?<div className="loading">Loading incident register…</div>:items.length?items.map(i=><section className="panel incident-card" key={i.id}><div className="incident-top"><div><span className="eyebrow">INCIDENT #{i.id}</span><h3>{i.incident_type.replaceAll("_"," ")}</h3></div><span className={"pill "+(i.status==="OPEN"?"danger":"success")}>{i.status}</span></div><div className="incident-grid"><div><span>DOCUMENT</span><b>KAIRO-DOC-{String(i.document_id).padStart(5,"0")}</b></div><div><span>VERSION</span><b>V{i.version}</b></div><div><span>SEVERITY</span><b>{i.severity}</b></div><div><span>DETECTED BY</span><b>Authenticated KAIRO user #{i.detected_by??"—"}</b></div></div><p className="incident-explain">{i.explanation}</p><div className="hash-pair"><div><span>REGISTERED SHA-256</span><code>{i.expected_sha256}</code></div><div><span>OBSERVED SHA-256</span><code>{i.observed_sha256}</code></div></div>{i.status==="OPEN"&&<div className="incident-actions"><span><ShieldAlert size={15}/> Do not treat the detector as proof of attacker identity.</span>{user?.role!=="AUDITOR"&&<button className="primary" disabled={busy===i.id} onClick={()=>resolve(i.id)}>{busy===i.id?"Resolving…":"Record resolution"}</button>}</div>}{i.status==="RESOLVED"&&<div className="resolved-note">Resolution: {i.resolution}</div>}</section>):<div className="empty">No incidents in this view.</div>}
  </>
 }
 
@@ -233,7 +237,8 @@ export default function App(){
  async function completeLogin(){
    try{setUser(await api.me())}catch(e){localStorage.removeItem("kairo_token");throw e}
  }
- function logout(){
+ async function logout(){
+   try{await api.logout()}catch{}
    localStorage.removeItem("kairo_token");
    localStorage.removeItem("kairo_page");
    setUser(null);setPage("overview");setSelected(null);
@@ -241,7 +246,7 @@ export default function App(){
  useEffect(()=>{ if(user) localStorage.setItem("kairo_page", page); },[user,page]);
  if(checking)return <div className="splash"><Logo/><span>Establishing secure session…</span></div>;
  if(!user)return <Login onLogin={completeLogin}/>;
- const content=selected?<CaseDetail id={selected} onBack={()=>setSelected(null)}/>:page==="overview"?<Overview user={user} setPage={setPage}/>:page==="cases"?<Cases setSelected={setSelected} user={user} onCreate={()=>setShowCaseCreate(true)}/>:page==="search"?<SearchPage setSelected={setSelected}/>:page==="integrity"?<Integrity/>:page==="trust"?<TrustLedger/>:page==="security"?<Security user={user}/>:page==="incidents"?<Incidents/>:page==="sharing"?<Sharing/>:page==="signatures"?<Signatures/>:page==="governance"?<Governance/>:page==="forensics"?<ForensicExport/>:user.role==="AUDITOR"?<Audit/>:<Overview user={user} setPage={setPage}/>;
+ const content=selected?<CaseDetail id={selected} user={user} onBack={()=>setSelected(null)}/>:page==="overview"?<Overview user={user} setPage={setPage}/>:page==="cases"?<Cases setSelected={setSelected} user={user} onCreate={()=>setShowCaseCreate(true)}/>:page==="search"?<SearchPage setSelected={setSelected}/>:page==="integrity"?<Integrity/>:page==="trust"?<TrustLedger/>:page==="security"?<Security user={user}/>:page==="incidents"?<Incidents user={user}/>:page==="sharing"?<Sharing/>:page==="signatures"?<Signatures/>:page==="governance"?<Governance/>:page==="forensics"?<ForensicExport/>:user.role==="AUDITOR"?<Audit/>:<Overview user={user} setPage={setPage}/>;
  return <Shell user={user} page={selected?"case":page} setPage={p=>{setSelected(null);setPage(p);localStorage.setItem("kairo_page",p)}} onLogout={logout}>{content}{showCaseCreate&&<CaseCreateModal onClose={()=>setShowCaseCreate(false)} onCreated={id=>{setShowCaseCreate(false);setSelected(id);setPage("cases")}}/>}</Shell>
 }
 

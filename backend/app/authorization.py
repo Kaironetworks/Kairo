@@ -26,6 +26,9 @@ class Permission(StrEnum):
     SIGNATURE_READ = "signature:read"
     GOVERNANCE_READ = "governance:read"
     GOVERNANCE_MANAGE = "governance:manage"
+    INCIDENT_READ = "incident:read"
+    INCIDENT_RESOLVE = "incident:resolve"
+    CASE_MEMBER_MANAGE = "case:member:manage"
 
 
 ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
@@ -36,7 +39,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.DOCUMENT_VERSION_CREATE,
         Permission.DOCUMENT_VERIFY,
         Permission.DOCUMENT_DOWNLOAD,
-        Permission.TRUST_READ, Permission.SHARE_CREATE, Permission.SHARE_READ, Permission.SHARE_REVOKE, Permission.SIGN, Permission.SIGNATURE_READ, Permission.GOVERNANCE_READ, Permission.GOVERNANCE_MANAGE,
+        Permission.TRUST_READ, Permission.SHARE_CREATE, Permission.SHARE_READ, Permission.SHARE_REVOKE, Permission.SIGN, Permission.SIGNATURE_READ, Permission.GOVERNANCE_READ, Permission.GOVERNANCE_MANAGE, Permission.INCIDENT_READ, Permission.INCIDENT_RESOLVE, Permission.CASE_MEMBER_MANAGE,
     }),
     "FORENSIC_OFFICER": frozenset({
         Permission.CASE_READ, Permission.CASE_CREATE,
@@ -45,13 +48,13 @@ ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.DOCUMENT_VERSION_CREATE,
         Permission.DOCUMENT_VERIFY,
         Permission.DOCUMENT_DOWNLOAD,
-        Permission.TRUST_READ, Permission.SHARE_CREATE, Permission.SHARE_READ, Permission.SHARE_REVOKE, Permission.SIGN, Permission.SIGNATURE_READ, Permission.GOVERNANCE_READ, Permission.GOVERNANCE_MANAGE,
+        Permission.TRUST_READ, Permission.SHARE_CREATE, Permission.SHARE_READ, Permission.SHARE_REVOKE, Permission.SIGN, Permission.SIGNATURE_READ, Permission.GOVERNANCE_READ, Permission.GOVERNANCE_MANAGE, Permission.INCIDENT_READ,
     }),
     "AUDITOR": frozenset({
         Permission.CASE_READ,
         Permission.DOCUMENT_READ,
         Permission.DOCUMENT_VERIFY,
-        Permission.AUDIT_READ,
+        Permission.AUDIT_READ, Permission.INCIDENT_READ,
         Permission.TRUST_READ, Permission.SHARE_READ, Permission.SIGNATURE_READ, Permission.GOVERNANCE_READ,
     }),
 }

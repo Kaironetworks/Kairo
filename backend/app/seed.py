@@ -1,6 +1,6 @@
 from sqlalchemy import select
 from .db import Base, engine, SessionLocal
-from .models import User, Case, Document, DocumentVersion
+from .models import User, Case, Document, DocumentVersion, CaseMember
 from .security import hash_password
 from .storage import ensure_bucket, put_bytes
 import hashlib
@@ -34,6 +34,17 @@ def run():
             )
             db.add(case)
             db.commit()
+
+        for email, membership_role in [
+            ("investigator@kairo.local", "LEAD_INVESTIGATOR"),
+            ("forensic@kairo.local", "FORENSIC_EXAMINER"),
+            ("auditor@kairo.local", "AUDITOR"),
+        ]:
+            member = db.scalar(select(CaseMember).join(User, CaseMember.user_id == User.id).where(CaseMember.case_id == case.id, User.email == email))
+            if not member:
+                u = db.scalar(select(User).where(User.email == email))
+                db.add(CaseMember(case_id=case.id, user_id=u.id, membership_role=membership_role))
+        db.commit()
 
         if not db.scalar(select(Document).where(Document.document_number == "KAIRO-DOC-00001")):
             investigator = db.scalar(select(User).where(User.email == "investigator@kairo.local"))

@@ -410,3 +410,14 @@ code{font-family:var(--mono);font-size:11px}
   .custody-grid{grid-template-columns:1fr 1fr}
 }
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+
+/* case access */
+.case-access{margin-top:18px}
+.member-list{display:grid;gap:1px;margin-top:4px;border-top:1px solid var(--line)}
+.member-row{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:13px 0;border-bottom:1px solid var(--line)}
+.member-row b{display:block;font-size:12px}.member-row span{display:block;margin-top:4px;color:var(--muted);font-size:10px}
+.case-access .inline-form{display:grid;grid-template-columns:1fr auto;gap:9px;margin-top:14px}
+.case-access .inline-form input{min-width:0;padding:11px 12px;border:1px solid var(--line-strong);border-radius:10px;background:#fff;outline:none;font-size:12px}
+.case-access .inline-form input:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(45,108,223,.10)}
+.case-access .notice{margin-top:12px}
+@media(max-width:680px){.case-access .inline-form{grid-template-columns:1fr}.member-row{align-items:flex-start}}
