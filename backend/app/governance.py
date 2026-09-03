@@ -100,6 +100,8 @@ def sign_record(db, document_id, version, signer_id, digest):
         ORDER BY id DESC LIMIT 1'''), {'d':document_id, 'v':version, 's':signer_id, 'h':digest}).mappings().first()
     if existing:
         result = dict(existing)
+        result.setdefault("algorithm", "RSA-PSS-SHA256")
+        result.setdefault("signed_hash", digest)
         result["existing"] = True
         return result
     sig,pub=sign_hash(signer_id,digest)

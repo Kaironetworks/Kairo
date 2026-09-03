@@ -90,10 +90,39 @@ def startup():
         pass
 
 def require_case_access(db: Session, user: User, case_id: int, *, write: bool = False):
-    case = require_case_access(db, user, case_id, write=True)
-    membership = db.scalar(select(CaseMember).where(CaseMember.case_id == case_id, CaseMember.user_id == user.id))
+    """Return a case only when the authenticated user is assigned to it.
+
+    Role permissions are checked at the route boundary; this helper enforces the
+    second boundary: the user must also belong to the requested case.
+    ``write`` is carried by callers so the same guard is used consistently for
+    read/write operations; write-capable routes already require a write
+    permission and therefore do not need a separate role check here.
+    """
+    case = db.get(Case, case_id)
+    if not case:
+        raise HTTPException(404, "Case not found")
+
+    # Auditors have read-only oversight across the case registry. They still
+    # need explicit write permissions (which the role does not possess), so
+    # this exception cannot be used to mutate a case.
+    if user.role == "AUDITOR" and not write:
+        return case
+
+    membership = db.scalar(
+        select(CaseMember).where(
+            CaseMember.case_id == case_id,
+            CaseMember.user_id == user.id,
+        )
+    )
     if not membership:
-        deny(db, user, "CASE_ACCESS", "CASE", case_id, "User is not assigned to this case")
+        deny(
+            db,
+            user,
+            "CASE_ACCESS_WRITE" if write else "CASE_ACCESS",
+            "CASE",
+            case_id,
+            "User is not assigned to this case",
+        )
     return case
 
 def require_document_access(db: Session, user: User, document_id: int, *, write: bool = False):
@@ -263,6 +292,8 @@ def dashboard(
     user: User = Depends(current_user),
 ):
     case_ids = select(CaseMember.case_id).where(CaseMember.user_id == user.id)
+    if user.role == "AUDITOR":
+        case_ids = select(Case.id)
     return {
         "cases": db.scalar(select(func.count()).select_from(Case).where(Case.id.in_(case_ids))) or 0,
         "documents": db.scalar(select(func.count()).select_from(Document).where(Document.case_id.in_(case_ids))) or 0,
@@ -281,6 +312,8 @@ def cases(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission(Permission.CASE_READ)),
 ):
+    if user.role == "AUDITOR":
+        return list(db.scalars(select(Case).order_by(Case.created_at.desc())))
     return list(db.scalars(select(Case).join(CaseMember, CaseMember.case_id == Case.id).where(CaseMember.user_id == user.id).order_by(Case.created_at.desc())))
 
 
@@ -387,7 +420,8 @@ def search(
         .join(Case, Document.case_id == Case.id)
         .outerjoin(latest, (latest.c.document_id == Document.id) & (latest.c.rn == 1))
         .order_by(Document.created_at.desc()).offset(offset).limit(limit))
-    filters=[Document.case_id.in_(select(CaseMember.case_id).where(CaseMember.user_id == user.id))]
+    visible_case_ids = select(Case.id) if user.role == "AUDITOR" else select(CaseMember.case_id).where(CaseMember.user_id == user.id)
+    filters=[Document.case_id.in_(visible_case_ids)]
     if case_id is not None:
         require_case_access(db, user, case_id)
         filters.append(Document.case_id == case_id)
@@ -455,9 +489,7 @@ async def upload_document(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission(Permission.DOCUMENT_UPLOAD)),
 ):
-    case = db.get(Case, case_id)
-    if not case:
-        raise HTTPException(404, "Case not found")
+    case = require_case_access(db, user, case_id, write=True)
 
     if classification.upper() not in {"RESTRICTED", "CONFIDENTIAL", "HIGHLY_RESTRICTED"}:
         deny(
@@ -695,6 +727,8 @@ def incidents(
     user: User = Depends(require_permission(Permission.INCIDENT_READ)),
 ):
     rows = list_incidents(db, status=status)
+    if user.role == "AUDITOR":
+        return rows
     allowed = {c.id for c in db.scalars(select(Case).join(CaseMember, CaseMember.case_id == Case.id).where(CaseMember.user_id == user.id))}
     return [r for r in rows if db.scalar(select(Document.case_id).where(Document.id == r["document_id"])) in allowed]
 
@@ -881,7 +915,7 @@ def sign_document(document_id:int, db:Session=Depends(get_db), user:User=Depends
     try: result=sign_record(db,document_id,version.version,user.id,version.sha256)
     except RuntimeError as e: raise HTTPException(503,str(e))
     audit(db,user,"DOCUMENT_DIGITAL_SIGN","DOCUMENT",document_id,"SUCCESS",json.dumps({"version":version.version,"signed_hash":version.sha256,"signature_id":result["id"]}))
-    return {"id":result["id"],"document_id":document_id,"version":version.version,"signer_id":user.id,"signer_email":user.email,"algorithm":result["algorithm"],"signed_hash":version.sha256,"created_at":result["created_at"],"existing":bool(result.get("existing", False))}
+    return {"id":result["id"],"document_id":document_id,"version":version.version,"signer_id":user.id,"signer_email":user.email,"algorithm":result.get("algorithm") or "RSA-PSS-SHA256","signed_hash":result.get("signed_hash") or version.sha256,"created_at":result["created_at"],"existing":bool(result.get("existing", False))}
 
 @app.get("/api/documents/{document_id}/signatures")
 def signatures(document_id:int, db:Session=Depends(get_db), user:User=Depends(require_permission(Permission.SIGNATURE_READ))):
@@ -1030,6 +1064,7 @@ def download_document_version(
     """Retrieve one exact immutable version after an integrity check."""
     doc=db.get(Document, document_id)
     if not doc: raise HTTPException(404, "Document not found")
+    require_case_access(db, user, doc.case_id)
     if not has_permission(user, Permission.DOCUMENT_DOWNLOAD):
         deny(db,user,"DOCUMENT_DOWNLOAD","DOCUMENT_VERSION",f"{document_id}:v{version_number}","Role does not permit document download")
     version=db.scalar(select(DocumentVersion).where(DocumentVersion.document_id==document_id, DocumentVersion.version==version_number))
