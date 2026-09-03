@@ -23,7 +23,8 @@ import os
 import re
 from pathlib import Path
 
-from minio import Minio
+import boto3
+from botocore.client import Config
 
 BACKUP = Path(__file__).with_name(".kairo_tamper_backup.bin")
 PREFIX = "cases/CASE-KR-2026-001/documents/1/"
@@ -35,25 +36,25 @@ def env(name, default=None):
 
 
 def main():
-    endpoint = env("MINIO_ENDPOINT", "127.0.0.1:9000")
-    access = env("MINIO_ACCESS_KEY", "kairo")
-    secret = env("MINIO_SECRET_KEY", "kairo-secret")
+    endpoint = env("MINIO_ENDPOINT", "http://127.0.0.1:9000")
+    access = env("MINIO_ACCESS_KEY", "kairoadmin")
+    secret = env("MINIO_SECRET_KEY", "kairo_minio_password")
     bucket = env("MINIO_BUCKET", "kairo-documents")
 
-    client = Minio(endpoint, access_key=access, secret_key=secret, secure=False)
-    objects = list(client.list_objects(bucket, prefix=PREFIX, recursive=True))
+    client = boto3.client("s3", endpoint_url=endpoint, aws_access_key_id=access, aws_secret_access_key=secret, region_name="us-east-1", config=Config(signature_version="s3v4", connect_timeout=3, read_timeout=5, retries={"max_attempts": 1}))
+    objects = [{"object_name": x["Key"]} for page in client.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=PREFIX) for x in page.get("Contents", [])]
 
     candidates = []
     for obj in objects:
-        match = VERSION_RE.search(obj.object_name)
+        match = VERSION_RE.search(obj["object_name"])
         if match:
-            candidates.append((int(match.group(1)), obj.object_name))
+            candidates.append((int(match.group(1)), obj["object_name"]))
 
     if not candidates:
         raise SystemExit(f"No versioned evidence objects found under {bucket}/{PREFIX}")
 
     version, object_name = max(candidates, key=lambda item: item[0])
-    clean = client.get_object(bucket, object_name).read()
+    clean = client.get_object(Bucket=bucket, Key=object_name)["Body"].read()
     BACKUP.write_bytes(clean)
 
     payload = (
@@ -69,13 +70,7 @@ def main():
     print(f"Clean bytes backed up to: {BACKUP}")
     print("Writing controlled altered bytes outside KAIRO...")
 
-    client.put_object(
-        bucket,
-        object_name,
-        io.BytesIO(payload),
-        length=len(payload),
-        content_type="application/octet-stream",
-    )
+    client.put_object(Bucket=bucket, Key=object_name, Body=payload, ContentType="application/octet-stream")
 
     print("DONE: stored evidence bytes changed without creating a KAIRO version.")
     print("Now open KAIRO and run Verify current bytes.")

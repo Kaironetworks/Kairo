@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, DateTime, ForeignKey, Integer, Boolean
+from sqlalchemy import String, Text, DateTime, ForeignKey, Integer, Boolean, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .db import Base
 
@@ -31,6 +31,7 @@ class Case(Base):
 
 class CaseMember(Base):
     __tablename__ = "case_members"
+    __table_args__ = (UniqueConstraint("case_id", "user_id", name="uq_case_member_case_user"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     case_id: Mapped[int] = mapped_column(ForeignKey("cases.id"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
@@ -52,6 +53,7 @@ class Document(Base):
 
 class DocumentVersion(Base):
     __tablename__ = "document_versions"
+    __table_args__ = (UniqueConstraint("document_id", "version", name="uq_document_version_document_version"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"), index=True)
     version: Mapped[int] = mapped_column(Integer)

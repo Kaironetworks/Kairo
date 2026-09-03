@@ -349,6 +349,9 @@ def case_members(case_id:int, db:Session=Depends(get_db), user:User=Depends(requ
 @app.post("/api/cases/{case_id}/members")
 def add_case_member(case_id:int, body:dict, db:Session=Depends(get_db), user:User=Depends(require_permission(Permission.CASE_MEMBER_MANAGE))):
     require_case_access(db,user,case_id,write=True)
+    membership = db.scalar(select(CaseMember).where(CaseMember.case_id == case_id, CaseMember.user_id == user.id))
+    if not membership or membership.membership_role != "LEAD_INVESTIGATOR":
+        deny(db,user,"CASE_MEMBER_MANAGE","CASE",case_id,"Only the lead investigator may change case membership")
     identifier=str(body.get("user_id") or body.get("email") or "").strip().lower()
     if not identifier: raise HTTPException(400,"user_id or email is required")
     target=db.scalar(select(User).where((User.email==identifier) | (User.id==int(identifier) if identifier.isdigit() else False)))
@@ -364,6 +367,9 @@ def add_case_member(case_id:int, body:dict, db:Session=Depends(get_db), user:Use
 @app.delete("/api/cases/{case_id}/members/{member_id}")
 def remove_case_member(case_id:int,member_id:int,db:Session=Depends(get_db),user:User=Depends(require_permission(Permission.CASE_MEMBER_MANAGE))):
     require_case_access(db,user,case_id,write=True)
+    membership = db.scalar(select(CaseMember).where(CaseMember.case_id == case_id, CaseMember.user_id == user.id))
+    if not membership or membership.membership_role != "LEAD_INVESTIGATOR":
+        deny(db,user,"CASE_MEMBER_MANAGE","CASE",case_id,"Only the lead investigator may change case membership")
     row=db.scalar(select(CaseMember).where(CaseMember.id==member_id,CaseMember.case_id==case_id))
     if not row: raise HTTPException(404,"Case member not found")
     if row.user_id==user.id: raise HTTPException(400,"Lead user cannot remove their own case access")
@@ -866,6 +872,8 @@ def share_document(document_id:int, body:dict, db:Session=Depends(get_db), user:
     target=db.scalar(select(User).where(User.email==str(body.get("email","")).lower().strip()))
     if not target or not target.is_active: raise HTTPException(404,"Authorized collaborator not found")
     if target.id==user.id: raise HTTPException(400,"Choose another authorized collaborator")
+    target_member = db.scalar(select(CaseMember).where(CaseMember.case_id == doc.case_id, CaseMember.user_id == target.id))
+    if not target_member: raise HTTPException(403,"Collaborator must already be assigned to this case")
     permission=str(body.get("permission","VIEW")).upper()
     if permission not in {"VIEW","DOWNLOAD"}: raise HTTPException(400,"Unsupported share permission")
     try: expires=datetime.fromisoformat(str(body.get("expires_at")).replace("Z","+00:00"))
@@ -876,12 +884,22 @@ def share_document(document_id:int, body:dict, db:Session=Depends(get_db), user:
     return {"id":result["id"],"token":result["token"],"expires_at":expires,"shared_with":target.email,"permission":permission}
 
 @app.get("/api/shares/incoming")
-def incoming_shares(db:Session=Depends(get_db), user:User=Depends(current_user)):
+def incoming_shares(db:Session=Depends(get_db), user:User=Depends(require_permission(Permission.SHARE_READ))):
     return list_shares(db,user.id,incoming=True)
 
 @app.get("/api/shares/outgoing")
-def outgoing_shares(db:Session=Depends(get_db), user:User=Depends(require_permission(Permission.DOCUMENT_READ))):
+def outgoing_shares(db:Session=Depends(get_db), user:User=Depends(require_permission(Permission.SHARE_READ))):
     return list_shares(db,user.id,incoming=False)
+
+@app.get("/api/shares/{share_id}")
+def read_incoming_share(share_id:int, db:Session=Depends(get_db), user:User=Depends(require_permission(Permission.SHARE_READ))):
+    row=db.execute(__import__("sqlalchemy").text("""SELECT s.id,s.document_id,s.shared_by,s.shared_with,s.permission,s.expires_at,s.revoked_at,s.created_at,d.document_number,d.title,d.classification,d.current_version
+      FROM document_shares s JOIN documents d ON d.id=s.document_id
+      WHERE s.id=:i AND s.shared_with=:u"""),{"i":share_id,"u":user.id}).mappings().first()
+    if not row: raise HTTPException(404,"Share not found")
+    if row["revoked_at"]: raise HTTPException(403,"Share has been revoked")
+    if row["expires_at"] <= datetime.now(timezone.utc): raise HTTPException(403,"Share has expired")
+    return dict(row)
 
 @app.get("/api/shares/{share_id}/download")
 def download_shared_document(share_id:int, db:Session=Depends(get_db), user:User=Depends(current_user)):
@@ -893,7 +911,7 @@ def download_shared_document(share_id:int, db:Session=Depends(get_db), user:User
     now=datetime.now(timezone.utc)
     if row["revoked_at"]: raise HTTPException(403,"Share has been revoked")
     if row["expires_at"] <= now: raise HTTPException(403,"Share has expired")
-    if row["permission"] not in {"VIEW","DOWNLOAD"}: raise HTTPException(403,"Share does not permit retrieval")
+    if row["permission"] != "DOWNLOAD": raise HTTPException(403,"This share permits record viewing only, not evidence retrieval")
     data=get_bytes(row["object_key"]); observed=hashlib.sha256(data).hexdigest()
     if observed != row["sha256"]: raise HTTPException(409,"Refusing shared retrieval: evidence failed integrity verification")
     audit(db,user,"SHARED_DOCUMENT_DOWNLOAD","DOCUMENT",row["document_id"],"SUCCESS",json.dumps({"share_id":share_id,"version":row["version"]}))

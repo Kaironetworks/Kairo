@@ -12,9 +12,9 @@
 | Custody | Audit-derived lifecycle record with authorized actor/action linkage | COMPLETE |
 | Audit | Protected audit event trail with denied-action records | COMPLETE |
 | Trust ledger | Local SHA-256 chained audit ledger | COMPLETE |
-| Blockchain | Hyperledger Fabric Gateway integration with real transaction ID returned by Fabric | INTEGRATION-READY / LIVE PROOF REQUIRES FABRIC RUNTIME |
+| Blockchain | Hyperledger Fabric Gateway integration; transaction ID is returned by Fabric when the configured network is live | IMPLEMENTED / LIVE PROOF REQUIRES FABRIC RUNTIME |
 | Fabric chaincode | JavaScript `kairo-trust` contract | COMPLETE FOR PROTOTYPE |
-| Sharing | Account-bound, permission-specific, expiring and revocable | COMPLETE |
+| Sharing | Case-member-only, account-bound, permission-specific, expiring and revocable | COMPLETE |
 | Signatures | RSA-PSS over registered SHA-256 fingerprint | CRYPTOGRAPHIC PROTOTYPE |
 | Governance | Retention + legal hold + conservative retention scan/disposition eligibility | COMPLETE FOR PROTOTYPE |
 | Incidents | Integrity incident creation, scoped read, investigator-only resolution | COMPLETE |
@@ -25,7 +25,7 @@
 | Qualified legal e-signature | Requires external qualified trust/service infrastructure | NOT IMPLEMENTED |
 | KMS/HSM | Deployment integration required for production key custody | DEPLOYMENT-DEPENDENT |
 | Distributed rate limiting | Current local limiter is single-process; production should use shared infrastructure | DEPLOYMENT-DEPENDENT |
-| Automatic destruction | Expiry is evaluated and protected records are withheld; irreversible deletion requires explicit governance policy | CONSERVATIVE PROTOTYPE |
+| Automatic destruction | Expiry is evaluated and protected records are withheld; irreversible deletion requires explicit governance policy | INTENTIONALLY NOT AUTOMATIC |
 
 ## Completion rule
 

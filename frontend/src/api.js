@@ -117,7 +117,7 @@ export const api = {
   resolveIncident: (id,resolution)=>request(`/api/incidents/${id}/resolve`,{method:"POST",body:JSON.stringify({resolution})}),
   collaborators: ()=>request("/api/users/collaborators"),
   share: (docId,body)=>request(`/api/documents/${docId}/shares`,{method:"POST",body:JSON.stringify(body)}),
-  incomingShares: ()=>request("/api/shares/incoming"), downloadShared: async id=>(await blobRequest(`/api/shares/${id}/download`)).blob, outgoingShares: ()=>request("/api/shares/outgoing"),
+  incomingShares: ()=>request("/api/shares/incoming"), shareRecord: id=>request(`/api/shares/${id}`), downloadShared: async id=>(await blobRequest(`/api/shares/${id}/download`)).blob, outgoingShares: ()=>request("/api/shares/outgoing"),
   revokeShare: id=>request(`/api/shares/${id}/revoke`,{method:"POST"}),
   sign: docId=>request(`/api/documents/${docId}/sign`,{method:"POST"}),
   signatures: docId=>request(`/api/documents/${docId}/signatures`),

@@ -10,7 +10,7 @@
 | Authorized collaboration | Account-bound sharing, expiry, revocation | READY |
 | Legal lifecycle | Retention policies + legal hold | READY |
 | Evidentiary traceability | Chain of custody + forensic export | READY |
-| Blockchain enhancement | Hyperledger Fabric `kairo-trust` | DEPLOYED; end-to-end Gateway TXID requires runtime verification |
+| Blockchain enhancement | Hyperledger Fabric `kairo-trust` via Fabric Gateway | IMPLEMENTED; live Gateway → Fabric TXID requires the target Fabric runtime |
 
 ## Jury assessment
 **Problem fit: 9/10.** Directly addresses secure legal/investigation document management.
@@ -23,7 +23,7 @@
 
 **Innovation/demo value: 9/10.** Tamper → detection → incident is an excellent live proof.
 
-**Production readiness: 7/10.** Further work is required for production KMS/HSM, HA, distributed rate limiting, formal e-signature compliance, hardened deployment and operational monitoring.
+**Deployment readiness: prototype-ready, production deployment dependent.** The application core is hardened for the SIH demonstration, while government production still requires environment-specific KMS/HSM, HA, shared rate limiting, qualified signature infrastructure, TLS/reverse-proxy controls, monitoring and operational policy.
 
 ## Likely questions
 **Why blockchain?** Independent permissioned trust anchoring for proof/custody metadata.
