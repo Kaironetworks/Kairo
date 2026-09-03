@@ -1,4 +1,4 @@
-import {useEffect,useRef,useState} from "react";
+import {useEffect,useState} from "react";
 import {
  ShieldCheck,LockKeyhole,ArrowRight,Activity,Database,FileCheck2,Fingerprint,
  Search,LogOut,Menu,X,ChevronRight,RefreshCw,CircleCheck,AlertTriangle,
@@ -8,19 +8,18 @@ import {
 import {api} from "./api";
 
 const roleLabel=r=>(r||"").replaceAll("_"," ");
-const initials=name=>(name||"KAIRO").split(/\s+/).filter(Boolean).map(part=>part[0]).join("").slice(0,2).toUpperCase();
 function Logo(){return <div className="brand"><img className="brand-logo" src="/kairo-logo.png" alt="" aria-hidden="true"/><span>KAIRO</span></div>}
 
 function Login({onLogin}){
- const [userId,setUserId]=useState(""),[password,setPassword]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState("");
- async function submit(e){e.preventDefault();setBusy(true);setError("");try{const r=await api.login(userId,password);localStorage.setItem("kairo_token",r.access_token);await onLogin()}catch(e){setError(e.message)}finally{setBusy(false)}}
+ const [email,setEmail]=useState(""),[password,setPassword]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState("");
+ async function submit(e){e.preventDefault();setBusy(true);setError("");try{const r=await api.login(email,password);localStorage.setItem("kairo_token",r.access_token);onLogin()}catch(e){setError(e.message)}finally{setBusy(false)}}
  return <main className="login-page">
  <nav className="topbar"><Logo/><div className="top-status"><span className="status-dot"/>SECURE ENVIRONMENT</div></nav>
  <section className="login-grid"><div className="hero-copy"><div className="eyebrow"><ShieldCheck size={14}/> DIGITAL EVIDENCE REGISTER</div>
  <h1>Trust,<br/><em>engineered.</em></h1><p>Secure digital document and evidence management for legal and investigative workflows, with controlled access, integrity verification and traceable history.</p>
  <div className="proof-row"><div><b>01 / INTEGRITY</b><span>SHA-256 evidence fingerprint</span></div><div><b>02 / IDENTITY</b><span>Authenticated session</span></div><div><b>03 / ACCESS</b><span>Role-based authorization</span></div></div></div>
  <form className="login-card" onSubmit={submit}><div className="card-kicker">AUTHORIZED ACCESS</div><h2>Enter KAIRO</h2><p className="muted">Authenticate to access the evidence workspace.</p>
- <label>User ID<input autoComplete="username" placeholder="Enter your User ID" value={userId} onChange={e=>setUserId(e.target.value)} /></label><label>Password<input autoComplete="current-password" placeholder="Enter your password" type="password" value={password} onChange={e=>setPassword(e.target.value)} /></label>
+ <label>User ID<input autoComplete="username" placeholder="Enter your User ID" value={email} onChange={e=>setEmail(e.target.value)} /></label><label>Password<input autoComplete="current-password" type="password" value={password} onChange={e=>setPassword(e.target.value)} /></label>
  {error&&<div className="error"><AlertTriangle size={16}/>{error}</div>}<button className="primary full" disabled={busy}>{busy?"Authenticating…":"Authenticate"}<ArrowRight size={17}/></button>
  <div className="login-foot"><LockKeyhole size={14}/> Signed session · least-privilege access</div></form></section>
  <footer><span>KAIRO</span><span>Trust, engineered.</span><span>Secure Digital Document & Evidence Management System</span></footer>
@@ -28,10 +27,9 @@ function Login({onLogin}){
 }
 
 function TrustContext({user,onClose}){
- const closeRef=useRef(null);
- useEffect(()=>{closeRef.current?.focus();const onKey=e=>{if(e.key==="Escape"){onClose();return}if(e.key!=="Tab")return;const dialog=e.currentTarget.querySelector("[role=dialog]");const focusable=dialog?.querySelectorAll("button,[href],input,select,textarea,[tabindex]:not([tabindex='-1'])");if(!focusable?.length)return;const first=focusable[0],last=focusable[focusable.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}};const backdrop=document.querySelector(".context-backdrop");backdrop?.addEventListener("keydown",onKey);return()=>backdrop?.removeEventListener("keydown",onKey)},[onClose]);
- return <div className="context-backdrop" role="presentation" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><section className="context-modal" role="dialog" aria-modal="true" aria-labelledby="trust-context-title">
-  <div className="context-head"><div><div className="eyebrow">SESSION SECURITY</div><h2 id="trust-context-title">Trust context</h2></div><button ref={closeRef} className="icon-btn" onClick={onClose} aria-label="Close trust context"><X size={17}/></button></div>
+ useEffect(()=>{const onKey=e=>{if(e.key==="Escape")onClose()};window.addEventListener("keydown",onKey);return()=>window.removeEventListener("keydown",onKey)},[onClose]);
+ return <div className="context-backdrop" role="presentation" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><section className="context-modal" role="dialog" aria-modal="true" aria-labelledby="trust-title">
+  <div className="context-head"><div><div className="eyebrow">SESSION SECURITY</div><h2 id="trust-title">Trust context</h2></div><button className="icon-btn" onClick={onClose} aria-label="Close trust context"><X size={17}/></button></div>
   <div className="context-status"><span className="context-status-dot"/>AUTHENTICATED</div>
   <div className="context-grid"><div><span>IDENTITY</span><b>{user.full_name}</b></div><div><span>ROLE</span><b>{roleLabel(user.role)}</b></div><div><span>SESSION</span><b>Authenticated</b></div><div><span>AUTHORIZATION</span><b>Role-based policy active</b></div></div>
   <p className="context-note">Protected actions are evaluated by the KAIRO API. The interface does not define your access.</p>
@@ -41,25 +39,27 @@ function TrustContext({user,onClose}){
 function Shell({user,page,setPage,onLogout,children}){
  const [open,setOpen]=useState(false),[showContext,setShowContext]=useState(false);
  const nav=[
-  ["overview","Dashboard",Activity],
+  ["overview","Overview",Activity],
   ["cases","Investigations",Search],
   ["search","Evidence",Search],
   ["integrity","Verification",Fingerprint],
-  ["trust","Trust & integrity",Blocks],
+  ["trust","Trust ledger",Blocks],
   ["security","Security",ShieldAlert],
   ...(user.role!=="AUDITOR"?[["incidents","Incidents",AlertTriangle],["sharing","Secure sharing",ExternalLink],["signatures","Signatures",KeyRound],["forensics","Forensic export",FileArchive]]:[]),
   ["governance","Governance",LockKeyhole],
   ...(user.role==="AUDITOR"?[["audit","Audit trail",History]]:[])
  ];
  return <div className="app-shell"><aside className={open?"sidebar open":"sidebar"}>
- <div className="side-head"><Logo/><button className="icon-btn mobile" onClick={()=>setOpen(false)} aria-label="Close navigation"><X/></button></div>
- <div className="side-context"><span>SECURE OPERATIONS</span><b>{roleLabel(user.role)}</b><small>Authorised workspace</small></div>
- <div className="nav-scroll">{nav.map(([id,l,I])=><button key={id} className={"nav-item "+(page===id?"active":"")} onClick={()=>{setPage(id);setOpen(false)}} aria-current={page===id?"page":undefined}><I size={18}/><span>{l}</span><ChevronRight size={14}/></button>)}</div>
- <div className="side-bottom"><button className="secure-box" onClick={()=>setShowContext(true)} aria-label="Open trust context"><span className="secure-dot"/><div><b>Trust context</b><span>Authenticated · policy enforced</span></div><ChevronRight size={14}/></button><button className="nav-item logout" onClick={onLogout} title="Sign out of KAIRO"><LogOut size={18}/><span>Sign out</span></button></div></aside>
+  <div className="side-head"><Logo/><button className="icon-btn mobile" onClick={()=>setOpen(false)} aria-label="Close navigation"><X/></button></div>
+  <div className="side-context"><span>SECURE OPERATIONS</span><b>{roleLabel(user.role)}</b><small>Authorised workspace</small></div>
+  <div className="nav-scroll">{nav.map(([id,l,I])=><button key={id} className={"nav-item "+(page===id?"active":"")} onClick={()=>{setPage(id);setOpen(false)}} aria-current={page===id?"page":undefined}><I size={18}/><span>{l}</span><ChevronRight size={14}/></button>)}</div>
+  <div className="side-bottom"><button className="secure-box" onClick={()=>setShowContext(true)} aria-label="Open trust context"><span className="secure-dot"/><div><b>Trust context</b><span>Authenticated · policy enforced</span></div><ChevronRight size={14}/></button><button className="nav-item logout" onClick={onLogout}><LogOut size={18}/><span>Sign out</span></button></div>
+ </aside>
  <div className="main"><header className="appbar"><button className="icon-btn mobile" onClick={()=>setOpen(true)} aria-label="Open navigation"><Menu/></button><div className="crumb"><span>KAIRO</span><i>/</i><b>{page}</b></div>
- <div className="header-actions">
-  <button className="identity identity-button" onClick={()=>setShowContext(true)} aria-label="Open trust context for authenticated user"><div className="avatar" aria-hidden="true">{initials(user.full_name)}</div><div><b>{user.full_name}</b><span>{roleLabel(user.role)}</span></div></button>
-</div></header><div className="content">{children}</div></div>{showContext&&<TrustContext user={user} onClose={()=>setShowContext(false)}/>}</div>
+  <div className="header-actions"><button className="identity identity-button" onClick={()=>setShowContext(true)} aria-label="Open trust context"><div className="avatar" aria-hidden="true">{(user.full_name||"KAIRO").split(/\s+/).filter(Boolean).map(x=>x[0]).join("").slice(0,2).toUpperCase()}</div><div><b>{user.full_name}</b><span>{roleLabel(user.role)}</span></div></button></div>
+ </header><div className="content">{children}</div></div>
+ {showContext&&<TrustContext user={user} onClose={()=>setShowContext(false)}/>}
+ </div>
 }
 function PageTitle({eyebrow,title,desc,action}){return <div className="page-title"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1><p>{desc}</p></div>{action&&<div>{action}</div>}</div>}
 function PanelHead({title,action}){return <div className="panel-head"><h3>{title}</h3>{action}</div>}
@@ -85,25 +85,25 @@ function Overview({user,setPage}){
 }
 
 function SearchPage({setSelected}){
- const [q,setQ]=useState(""),[type,setType]=useState(""),[classification,setClassification]=useState(""),[caseId,setCaseId]=useState(""),[items,setItems]=useState([]),[loading,setLoading]=useState(false),[searched,setSearched]=useState(false),[error,setError]=useState(""),[cases,setCases]=useState([]),[casesError,setCasesError]=useState(""),[downloading,setDownloading]=useState(null);
- useEffect(()=>{api.cases().then(setCases).catch(e=>setCasesError(e.message))},[]);
+ const [q,setQ]=useState(""),[type,setType]=useState(""),[classification,setClassification]=useState(""),[caseId,setCaseId]=useState(""),[items,setItems]=useState([]),[loading,setLoading]=useState(false),[searched,setSearched]=useState(false),[error,setError]=useState(""),[cases,setCases]=useState([]),[downloading,setDownloading]=useState(null);
+ useEffect(()=>{api.cases().then(setCases).catch(()=>{})},[]);
  useEffect(()=>{run()},[]);
  async function run(e){e?.preventDefault();setLoading(true);setError("");try{setItems(await api.search(q,{caseId,documentType:type,classification}));setSearched(true)}catch(e){setError(e.message)}finally{setLoading(false)}}
  async function download(item){setDownloading(`${item.document_id}:${item.current_version}`);try{const r=await api.downloadVersion(item.document_id,item.current_version);const url=URL.createObjectURL(r.blob);const a=document.createElement("a");a.href=url;a.download=r.filename;a.click();URL.revokeObjectURL(url)}catch(e){setError(e.message)}finally{setDownloading(null)}}
  return <><PageTitle eyebrow="EVIDENCE RETRIEVAL" title="Search & retrieval" desc="Find protected evidence by case, document number, title, filename, type or classification without exposing document bytes in the search index." action={<button className="secondary" onClick={()=>run()}><RefreshCw size={15}/>Refresh search</button>}/>
  <form className="panel search-panel" onSubmit={run}><div className="search-input-wrap"><Search size={18}/><input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search case number, document, filename, type or station…"/></div><div className="search-filters"><select value={caseId} onChange={e=>setCaseId(e.target.value)}><option value="">All cases</option>{cases.map(c=><option key={c.id} value={c.id}>{c.case_number}</option>)}</select><select value={type} onChange={e=>setType(e.target.value)}><option value="">All document types</option><option>FIR</option><option>EVIDENCE</option><option>FORENSIC_REPORT</option><option>WITNESS_STATEMENT</option><option>CHARGE_SHEET</option></select><select value={classification} onChange={e=>setClassification(e.target.value)}><option value="">All classifications</option><option>RESTRICTED</option><option>CONFIDENTIAL</option><option>HIGHLY_RESTRICTED</option></select><button className="primary" disabled={loading}>{loading?"Searching…":"Search evidence"}<ArrowRight size={15}/></button></div></form>
- {casesError&&<div className="error banner">Unable to load investigation filters. {casesError}</div>}{error&&<div className="error banner">{error}</div>}
+ {error&&<div className="error banner">{error}</div>}
  {searched&&<div className="search-summary"><span>{items.length} result{items.length!==1?"s":""}</span><span>Metadata-only search · protected by document:read</span></div>}
  <section className="panel search-results">{!searched?<Empty>Enter a search term or choose filters to find evidence.</Empty>:loading?<Empty>Searching protected evidence index…</Empty>:items.length?items.map(item=><div className="search-result" key={item.document_id}><div className="doc-icon"><FileCheck2/></div><div className="search-result-main"><div><b>{item.document_number} · {item.title}</b><span>{item.case_number} · {item.case_title}</span></div><div className="result-meta"><span>{item.document_type}</span><span>{item.classification}</span><span>Version {item.current_version}</span><span>{item.filename||"No filename"}</span></div><code>{item.sha256||"No fingerprint"}</code></div><div className="result-actions"><button className="secondary" onClick={()=>setSelected(item.case_id)}><Eye size={15}/>Open case</button><button className="secondary" onClick={()=>download(item)} disabled={downloading===`${item.document_id}:${item.current_version}`}>{downloading===`${item.document_id}:${item.current_version}`?"Retrieving…":"Retrieve current"}<ExternalLink size={14}/></button></div></div>):<Empty>No protected evidence matched your search.</Empty>}</section>
  <div className="trust-strip"><Search/><div><b>Retrieval is still security-controlled.</b><span>Search returns metadata only. Actual evidence bytes are retrieved through an authorized endpoint, integrity-checked before release, and the retrieval is recorded as a custody/audit event.</span></div></div></>
 }
 
 function Cases({setSelected,onCreate,user}){
- const [items,setItems]=useState([]),[loading,setLoading]=useState(true),[error,setError]=useState("");
- async function load(){setLoading(true);setError("");try{setItems(await api.cases())}catch(e){setError(e.message)}finally{setLoading(false)}}
+ const [items,setItems]=useState([]),[loading,setLoading]=useState(true);
+ async function load(){setLoading(true);try{setItems(await api.cases())}finally{setLoading(false)}}
  useEffect(()=>{load()},[]);
  return <><PageTitle eyebrow="INVESTIGATION REGISTRY" title="Cases" desc="The operational entry point for case files and evidence collections." action={<div className="actions"><button className="secondary" onClick={load}><RefreshCw size={15}/>Refresh</button>{user.role!=="AUDITOR"&&<button className="primary" onClick={onCreate}><Plus size={15}/>New investigation</button>}</div>}/>
- {error&&<div className="error banner">Unable to load investigations. {error}</div>}<section className="panel"><div className="table-head"><span>CASE</span><span>STATUS</span><span>PRIORITY</span><span>STATION</span><span></span></div>
+ <section className="panel"><div className="table-head"><span>CASE</span><span>STATUS</span><span>PRIORITY</span><span>STATION</span><span></span></div>
  {loading?<Empty>Loading registry…</Empty>:items.map(c=><button className="table-row" key={c.id} onClick={()=>setSelected(c.id)}><div><b>{c.case_number}</b><span>{c.title}</span></div><span className="pill success">{c.status.replaceAll("_"," ")}</span><span className="pill high">{c.priority}</span><span>{c.station}</span><ChevronRight/></button>)}</section></>
 }
 
@@ -253,8 +253,8 @@ function CaseCreateModal({onClose,onCreated}){
 }
 
 function DocumentPicker({value,onChange}){
- const [items,setItems]=useState([]),[error,setError]=useState(""); useEffect(()=>{api.search("",{limit:100}).then(setItems).catch(e=>setError(e.message))},[]);
- return error?<span className="field-error">Unable to load evidence documents.</span>:<select className="select" value={value||""} onChange={e=>onChange(e.target.value)}><option value="">Select evidence document…</option>{items.map(x=><option key={x.document_id} value={x.document_id}>{x.document_number} · {x.title}</option>)}</select>
+ const [items,setItems]=useState([]); useEffect(()=>{api.search("",{limit:100}).then(setItems).catch(()=>{})},[]);
+ return <select className="select" value={value||""} onChange={e=>onChange(e.target.value)}><option value="">Select evidence document…</option>{items.map(x=><option key={x.document_id} value={x.document_id}>{x.document_number} · {x.title}</option>)}</select>
 }
 
 function Sharing(){
