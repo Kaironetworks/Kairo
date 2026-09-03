@@ -16,9 +16,9 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  --bg: #f4f5f7;
+  --bg: #f7f7f5;
   --bg-elevated: #ffffff;
-  --bg-subtle: #eef0f3;
+  --bg-subtle: #f0f0ed;
   --bg-inverse: #0d1014;
   --ink: #111317;
   --ink-soft: #30353d;
@@ -26,9 +26,9 @@
   --faint: #969ea8;
   --line: #dfe3e8;
   --line-strong: #cbd1d8;
-  --blue: #0b72e7;
-  --blue-dark: #0758b5;
-  --blue-soft: #e8f2ff;
+  --blue: #111111;
+  --blue-dark: #000000;
+  --blue-soft: #f1f1ef;
   --green: #00875a;
   --green-soft: #e8f7f0;
   --amber: #a45b00;
@@ -36,12 +36,12 @@
   --red: #c73545;
   --red-soft: #ffedf0;
   --shadow-xs: 0 1px 2px rgba(16, 24, 40, .04);
-  --shadow-sm: 0 8px 24px rgba(16, 24, 40, .06);
-  --shadow-md: 0 18px 48px rgba(16, 24, 40, .09);
+  --shadow-sm: 0 8px 28px rgba(0, 0, 0, .05);
+  --shadow-md: 0 20px 60px rgba(0, 0, 0, .08);
   --radius-sm: 8px;
   --radius-md: 12px;
-  --radius-lg: 18px;
-  --radius-xl: 24px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
   --sidebar: 264px;
   --content-max: 1500px;
   --mono: "Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
@@ -119,12 +119,12 @@ code, kbd { font-family: var(--mono); }
   font-size: 12px;
   font-weight: 700;
 }
-.primary { background: var(--blue); color: white; box-shadow: 0 5px 14px color-mix(in srgb, var(--blue) 20%, transparent); }
-.primary:hover { background: var(--blue-dark); transform: translateY(-1px); }
+.primary { background: #111111; color: #ffffff; box-shadow: none; }
+.primary:hover { background: #000000; transform: translateY(-1px); }
 .secondary { background: var(--bg-elevated); border-color: var(--line); color: var(--ink); }
 .secondary:hover { border-color: var(--line-strong); background: var(--bg-subtle); transform: translateY(-1px); }
-.text-btn { display: inline-flex; align-items: center; gap: 5px; background: transparent; color: var(--blue); padding: 5px; font-size: 11px; font-weight: 700; }
-.text-btn:hover { color: var(--blue-dark); }
+.text-btn { display: inline-flex; align-items: center; gap: 5px; background: transparent; color: var(--ink); padding: 5px; font-size: 11px; font-weight: 700; }
+.text-btn:hover { color: #000000; }
 .icon-btn {
   width: 36px;
   height: 36px;
@@ -140,6 +140,7 @@ code, kbd { font-family: var(--mono); }
 
 /* ---------- brand ---------- */
 .brand { display: flex; align-items: center; gap: 10px; color: currentColor; font-size: 19px; font-weight: 800; letter-spacing: .13em; }
+.brand-logo { width: 34px; height: 34px; object-fit: contain; display: block; flex: 0 0 auto; }
 .brand-mark {
   width: 32px;
   height: 32px;
@@ -155,19 +156,6 @@ code, kbd { font-family: var(--mono); }
 
 /* ---------- login ---------- */
 .login-page { min-height: 100vh; position: relative; overflow: hidden; background: var(--bg); }
-.login-page::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
-  background-size: 64px 64px;
-  mask-image: linear-gradient(to bottom, black, transparent 80%);
-  opacity: .45;
-  pointer-events: none;
-}
-.ambient { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .18; pointer-events: none; animation: ambient-drift 14s ease-in-out infinite; }
-.a1 { width: 520px; height: 520px; right: -220px; top: 40px; background: var(--blue); }
-.a2 { width: 400px; height: 400px; left: -180px; bottom: -190px; background: var(--green); animation-delay: -6s; }
 .topbar {
   height: 72px;
   padding: 0 5.5%;
@@ -252,16 +240,16 @@ code, kbd { font-family: var(--mono); }
   display: flex;
   flex-direction: column;
   z-index: 50;
-  color: #e8ebef;
-  background: #0e1115;
-  border-right: 1px solid #262b31;
+  color: #1a1a1a;
+  background: #ffffff;
+  border-right: 1px solid #d9d9d4;
 }
-.side-head { height: 78px; flex: 0 0 78px; display: flex; align-items: center; justify-content: space-between; padding: 0 22px; border-bottom: 1px solid #262b31; }
-.side-head .brand-mark { background: #fff; color: #111; }
+.side-head { height: 78px; flex: 0 0 78px; display: flex; align-items: center; justify-content: space-between; padding: 0 22px; border-bottom: 1px solid #deded9; }
+.side-head .brand-mark { background: #111; color: #fff; }
 .side-context { padding: 22px 24px 14px; }
-.side-context span { display: block; color: #8c96a4; font: 600 9px var(--mono); letter-spacing: .12em; }
-.side-context b { display: block; margin-top: 6px; color: #cbd1d8; font: 600 9px var(--mono); letter-spacing: .07em; text-transform: uppercase; }
-.nav-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 12px 10px; scrollbar-width: thin; scrollbar-color: #3b424c transparent; }
+.side-context span { display: block; color: #7a7a73; font: 600 9px var(--mono); letter-spacing: .12em; }
+.side-context b { display: block; margin-top: 6px; color: #343434; font: 600 9px var(--mono); letter-spacing: .07em; text-transform: uppercase; }
+.nav-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 12px 10px; scrollbar-width: thin; scrollbar-color: #c8c8c2 transparent; }
 .nav-scroll::-webkit-scrollbar { width: 5px; }
 .nav-scroll::-webkit-scrollbar-thumb { background: #3b424c; border-radius: 10px; }
 .nav-item {
@@ -377,9 +365,9 @@ code, kbd { font-family: var(--mono); }
   background: var(--bg-inverse);
   color: white;
 }
-.trust-strip > svg { color: #3b9cff; margin-top: 1px; }
+.trust-strip > svg { color: #ffffff; margin-top: 1px; }
 .trust-strip b { display: block; font-size: 12px; }
-.trust-strip span { display: block; margin-top: 6px; color: #a8b0ba; font-size: 10px; line-height: 1.6; }
+.trust-strip span { display: block; margin-top: 6px; color: #b8b8b3; font-size: 10px; line-height: 1.6; }
 
 /* ---------- tables and lists ---------- */
 .table-head, .table-row { display: grid; grid-template-columns: minmax(260px, 1.5fr) 1fr 1fr 1.2fr 24px; align-items: center; gap: 16px; }
@@ -912,8 +900,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid #b8d7ef;outline-offset
 .login-page .hero-copy h1{font-size:46px;font-weight:650;letter-spacing:-.03em}
 .login-page .hero-copy h1 em{font-style:normal;color:var(--blue)}
 .login-page .login-card{border:1px solid var(--line);border-radius:6px;box-shadow:0 8px 30px rgba(16,24,40,.07)}
-.login-page .ambient{display:none}
-.login-page footer{color:var(--muted)}
+.login-page .login-page footer{color:var(--muted)}
 .proof-row>div{border-left:2px solid var(--blue)}
 .trust-strip{border:1px solid #cbd8e4;background:#f7fafc;border-radius:6px}
 .trust-strip svg{color:var(--blue)}
@@ -969,8 +956,7 @@ body { font-family: "Segoe UI", Arial, sans-serif; }
 ::selection { background: #111; color: #fff; }
 
 /* Remove every remnant of the previous floating / cinematic system. */
-.live-trust-rail, .trust-rail, .floating-trust, .ambient { display: none !important; }
-
+.live-trust-rail, .trust-rail, .floating-trust, 
 /* ----------------------------- LOGIN ----------------------------- */
 .login-page {
   min-height: 100vh;
@@ -1367,4 +1353,230 @@ input:focus, select:focus, textarea:focus {
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior:auto !important; transition:none !important; animation:none !important; }
+}
+
+/* KAIRO final institutional visual overrides */
+.login-page { background: #f7f7f5; }
+.login-page::after { content: ""; position: absolute; left: 5.5%; right: 5.5%; bottom: 72px; height: 1px; background: #deded9; pointer-events: none; }
+.hero-copy .eyebrow { color: #5b5b55; }
+.hero-copy h1 em { color: #111111; }
+.page-title h1 { color: #111111; }
+.nav-item { color: #51514c; }
+.nav-item:hover { color: #111111; background: #f1f1ef; }
+.nav-item.active { background: #111111 !important; color: #ffffff !important; }
+.nav-item.active svg { color: #ffffff; }
+.secure-box { background: #f4f4f1; border-color: #d6d6d0; }
+.secure-box b { color: #111111; }
+.secure-box span:not(.secure-dot) { color: #65655f; }
+.secure-state { color: #111111 !important; }
+.avatar { background: #111111; }
+.logout:hover { color: #111111; background: #f1f1ef; }
+.primary { background: #111111; border-color: #111111; box-shadow: none; }
+.primary:hover { background: #000000; border-color: #000000; }
+.secondary { background: #ffffff; border-color: #cfcfca; }
+.secondary:hover { background: #f4f4f1; }
+.proof-row b { color: #111111; }
+.trust-strip { border: 1px solid #232323; }
+
+/* ============================================================
+   FINAL KAIRO WORKSPACE SYSTEM
+   Editorial hierarchy, crisp rules, and purposeful interaction.
+   ============================================================ */
+html, body, #root, .app-shell, .main, .content { background: #f7f7f5; }
+*, *::before, *::after { backdrop-filter: none !important; }
+.app-shell *, .login-page * { background-image: none !important; }
+.appbar, .topbar { background: #fff !important; }
+.appbar { border-bottom: 1px solid #d7d7d2; }
+.sidebar { box-shadow: none; }
+.identity-button, .secure-box {
+  appearance: none;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.identity-button { padding: 0; background: transparent; color: inherit; }
+.identity-button:hover .avatar { background: #333; }
+.identity-button:focus-visible, .secure-box:focus-visible { outline: 2px solid #111; outline-offset: 3px; }
+.avatar { position: relative; display: grid; place-items: center; }
+.avatar::after { content: "AUTHENTICATED USER"; position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.side-bottom .secure-box { width: 100%; grid-template-columns: 9px 1fr 14px; color: #111; }
+.side-bottom .secure-box > svg { color: #777; }
+.side-bottom .secure-box span:not(.secure-dot) { color: #666; }
+.side-bottom .secure-box .secure-dot { background: #13734a; box-shadow: none; animation: none; }
+.operational-kicker { display: flex; justify-content: space-between; gap: 20px; margin-bottom: 20px; color: #777; font: 700 9px var(--mono); letter-spacing: .13em; }
+.operational-kicker span:last-child { color: #999; }
+.page-title { min-height: 190px; }
+.page-title::before { content: "KAIRO / RECORD"; }
+.page-title h1 { max-width: 850px; }
+.stats { grid-template-columns: repeat(4, minmax(0,1fr)); }
+.stat { min-height: 128px; }
+.stat strong { font-variant-numeric: tabular-nums; }
+.panel { border-radius: 4px; }
+.panel::before { height: 2px; }
+.panel-head::after { content: "RECORD"; }
+.case-row, .doc-row, .table-row, .search-result, .version-row, .signature-row { position: relative; }
+.case-row::before, .table-row::before, .search-result::before { position: absolute; left: 0; top: 0; bottom: 0; }
+.trust-strip { border-radius: 4px; }
+.context-backdrop {
+  position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 24px;
+  background: rgba(17,17,17,.38);
+}
+.context-modal {
+  width: min(520px,100%); padding: 28px; border: 1px solid #c9c9c4; border-radius: 4px;
+  background: #fff; box-shadow: 12px 12px 0 #111;
+}
+.context-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding-bottom: 20px; border-bottom: 1px solid #ddd; }
+.context-head h2 { margin: 8px 0 0; font-size: 28px; letter-spacing: -.04em; }
+.context-status { display: flex; align-items: center; gap: 8px; margin: 20px 0; color: #13734a; font: 700 10px var(--mono); letter-spacing: .1em; }
+.context-status-dot { width: 7px; height: 7px; border-radius: 50%; background: #13734a; }
+.context-grid { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid #ddd; border-left: 1px solid #ddd; }
+.context-grid > div { min-height: 82px; padding: 14px; display: grid; align-content: center; gap: 7px; border-right: 1px solid #ddd; border-bottom: 1px solid #ddd; }
+.context-grid span { color: #888; font: 700 8px var(--mono); letter-spacing: .1em; }
+.context-grid b { font-size: 11px; }
+.context-note { margin: 18px 0 0; color: #666; font-size: 11px; line-height: 1.6; }
+.picker-wrap { width: 100%; }
+.field-error { display: block; padding: 11px; border: 1px solid #e1b4b4; color: #a72828; background: #fff5f4; font-size: 10px; }
+@media (max-width: 760px) {
+  .operational-kicker { flex-direction: column; gap: 6px; }
+  .stats { grid-template-columns: 1fr 1fr; }
+  .context-modal { padding: 21px; }
+}
+@media (max-width: 480px) {
+  .stats { grid-template-columns: 1fr; }
+  .context-grid { grid-template-columns: 1fr; }
+}
+
+/* ============================================================
+   KAIRO LOGIN / FINAL PRODUCT SURFACE
+   Quiet, premium, and content-led. No ruled-column treatment.
+   ============================================================ */
+.login-page {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at 8% 18%, rgba(17, 17, 17, .035), transparent 28%),
+    #f8f8f6;
+}
+.login-page .topbar {
+  width: min(1400px, calc(100% - 96px));
+  height: 78px;
+  margin: 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+.login-page .brand { gap: 11px; font-size: 17px; letter-spacing: .15em; }
+.login-page .brand-logo { width: 30px; height: 30px; }
+.login-page .top-status {
+  padding: 8px 11px;
+  border: 1px solid #deded9;
+  border-radius: 999px;
+  background: rgba(255,255,255,.72);
+  color: #686862;
+  font-size: 9px;
+  letter-spacing: .1em;
+}
+.login-page .status-dot { width: 6px; height: 6px; background: #222; box-shadow: none; animation: none; }
+.login-grid {
+  width: min(1240px, calc(100% - 96px));
+  min-height: 0;
+  flex: 1;
+  margin: 0 auto;
+  padding: clamp(72px, 10vh, 132px) 0 clamp(68px, 10vh, 120px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 420px;
+  align-items: center;
+  gap: clamp(64px, 9vw, 150px);
+}
+.login-grid::before { display: none; }
+.hero-copy { max-width: 650px; }
+.hero-copy .eyebrow { margin-bottom: 23px; color: #777770; font-size: 10px; letter-spacing: .16em; }
+.hero-copy h1 {
+  margin: 0;
+  color: #111;
+  font-size: clamp(62px, 7.1vw, 108px);
+  line-height: .88;
+  letter-spacing: -.075em;
+  font-weight: 780;
+}
+.hero-copy h1 em { color: #111; }
+.hero-copy p {
+  max-width: 570px;
+  margin: 32px 0 0;
+  color: #62625c;
+  font-size: 16px;
+  line-height: 1.7;
+}
+.proof-row {
+  max-width: 610px;
+  margin-top: 42px;
+  padding-top: 20px;
+  border-top: 1px solid #cfcfca;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+.proof-row > div,
+.proof-row > div:not(:first-child),
+.proof-row > div:last-child {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+.proof-row b { color: #171714; font-size: 11px; letter-spacing: .02em; }
+.proof-row span { margin-top: 8px; color: #85857e; font-size: 10px; line-height: 1.4; }
+.login-card {
+  width: 100%;
+  padding: 34px;
+  border: 1px solid #d8d8d2;
+  border-radius: 10px;
+  background: rgba(255,255,255,.94);
+  box-shadow: 0 18px 55px rgba(18, 18, 16, .09);
+}
+.login-card .card-kicker { color: #777770; font-size: 9px; letter-spacing: .16em; }
+.login-card h2 { margin: 12px 0 7px; color: #111; font-size: 28px; letter-spacing: -.045em; }
+.login-card > p { margin-bottom: 27px; color: #777770; line-height: 1.55; }
+.login-card label { margin-top: 17px; color: #55554f; font-size: 10px; letter-spacing: .01em; }
+.login-card input {
+  min-height: 46px;
+  margin-top: 1px;
+  padding: 0 13px;
+  border: 1px solid #cfcfca;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 12px;
+}
+.login-card input:focus { border-color: #111; box-shadow: 0 0 0 3px rgba(17,17,17,.08); }
+.login-card .error { margin-top: 17px; border-color: #e1b8b5; background: #fff5f4; color: #a72828; }
+.login-card .primary { min-height: 46px; margin-top: 21px; border-radius: 6px !important; font-size: 12px; }
+.login-foot { margin-top: 20px; padding-top: 16px; color: #8a8a83; font-size: 9px; }
+.login-page footer {
+  width: min(1400px, calc(100% - 96px));
+  height: 58px;
+  margin: 0 auto;
+  padding: 0;
+  align-items: center;
+  border-top: 1px solid #deded9;
+  background: transparent;
+}
+
+@media (max-width: 900px) {
+  .login-page .topbar, .login-page footer, .login-grid { width: calc(100% - 48px); }
+  .login-grid { grid-template-columns: 1fr; gap: 52px; padding-top: 70px; }
+  .hero-copy { max-width: 720px; }
+  .login-card { max-width: 520px; }
+}
+@media (max-width: 560px) {
+  .login-page .topbar { height: 68px; }
+  .login-page .top-status { display: none; }
+  .login-page .topbar, .login-page footer, .login-grid { width: calc(100% - 32px); }
+  .login-grid { gap: 38px; padding: 52px 0 55px; }
+  .hero-copy h1 { font-size: 56px; }
+  .hero-copy p { margin-top: 24px; font-size: 14px; }
+  .proof-row { grid-template-columns: 1fr; gap: 16px; margin-top: 32px; }
+  .login-card { padding: 24px 20px; }
+  .login-page footer { height: auto; min-height: 72px; padding: 16px 0; align-items: flex-start; flex-direction: column; gap: 6px; }
 }

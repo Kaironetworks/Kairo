@@ -17,6 +17,13 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, hashed: str) -> bool:
     return pwd_context.verify(password, hashed)
 
+def resolve_user_identifier(identifier: str) -> str:
+    """Resolve a public User ID or legacy email to the stored account email."""
+    value = identifier.strip().lower()
+    if "@" in value:
+        return value
+    return f"{value}@kairo.local"
+
 def create_token(user: User) -> str:
     expires = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expire_minutes)
     return jwt.encode({"sub": str(user.id), "exp": expires}, settings.jwt_secret, algorithm="HS256")

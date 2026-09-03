@@ -17,6 +17,11 @@ if (-not (Test-Path $venv)) {
   & $venv -m pip install -r (Join-Path $backend "requirements.txt")
 }
 
+Write-Host "Initializing local demo data..." -ForegroundColor Yellow
+Push-Location $backend
+& $venv -m app.seed
+Pop-Location
+
 $frontend = Join-Path $Root "frontend"
 if (-not (Test-Path (Join-Path $frontend "node_modules"))) {
   Write-Host "Installing frontend dependencies..." -ForegroundColor Yellow

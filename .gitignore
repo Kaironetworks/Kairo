@@ -5,6 +5,8 @@ __pycache__/
 node_modules/
 dist/
 .vite/
+frontend/dist/
+security-lab/.kairo_tamper_backup.bin
 
 # Private keys
 *.pem

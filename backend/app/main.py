@@ -6,11 +6,12 @@ import time
 import uuid
 import zipfile
 from collections import defaultdict, deque
+from pathlib import Path
 
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, text
 from sqlalchemy.orm import Session
 
 from .config import settings
@@ -20,7 +21,7 @@ from .schemas import (
     Token, UserOut, LoginIn, CaseCreateIn, CaseOut, DocumentOut,
     VersionOut, AuditOut, SearchResultOut,
 )
-from .security import current_user, create_token, verify_password
+from .security import current_user, create_token, verify_password, resolve_user_identifier
 from .storage import ensure_bucket, put_bytes, get_bytes, delete_bytes
 from .authorization import Permission, require_permission, has_permission
 from .trust_ledger import ensure_ledger, anchor_audit_event, list_blocks, verify_ledger, document_anchors
@@ -163,8 +164,10 @@ def health():
 
 @app.post("/api/auth/login", response_model=Token)
 def login(body: LoginIn, db: Session = Depends(get_db)):
-    _check_login_rate_limit("anonymous:" + (body.email or "").lower().strip())
-    user = db.scalar(select(User).where(User.email == body.email.lower().strip()))
+    identifier = body.email.strip().lower()
+    _check_login_rate_limit("anonymous:" + identifier)
+    resolved_email = resolve_user_identifier(identifier)
+    user = db.scalar(select(User).where(User.email == resolved_email))
 
     if not user or not verify_password(body.password, user.password_hash):
         audit(
@@ -172,7 +175,7 @@ def login(body: LoginIn, db: Session = Depends(get_db)):
             user,
             "LOGIN",
             "USER",
-            body.email,
+            identifier,
             "DENIED",
             "Invalid credentials",
         )
