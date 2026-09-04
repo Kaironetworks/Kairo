@@ -1,2 +1,0 @@
-# Required by KAIRO Update 9-11 digital signatures
-cryptography>=42.0
