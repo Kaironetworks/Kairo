@@ -1,16 +1,8 @@
-.env
 .venv/
 __pycache__/
 *.pyc
-node_modules/
-dist/
-.vite/
-
-# Private keys
-*.pem
-*.key
-
-# Generated Fabric runtime assets
-fabric/scripts/bin/*
-!fabric/scripts/bin/.gitkeep
-fabric/work/
+frontend/node_modules/
+frontend/dist/
+data/kairo.db
+*.log
+.DS_Store

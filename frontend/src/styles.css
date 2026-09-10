@@ -459,3 +459,55 @@ code{font-family:var(--mono);font-size:11px}
 .proof-grid{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);margin-top:20px}.proof-grid>div{padding:18px;border-right:1px solid var(--line)}.proof-grid>div:last-child{border-right:0}.proof-grid span{display:block;color:var(--faint);font:600 8px var(--mono);letter-spacing:.08em;margin-bottom:7px}.proof-grid b{font-size:11px}
 @media(max-width:900px){.proof-grid{grid-template-columns:1fr 1fr}.proof-grid>div:nth-child(2){border-right:0}.proof-grid>div:nth-child(-n+2){border-bottom:1px solid var(--line)}}
 @media(max-width:640px){.proof-grid{grid-template-columns:1fr}.proof-grid>div{border-right:0!important;border-bottom:1px solid var(--line)}.proof-grid>div:last-child{border-bottom:0}.terminal-screen{min-height:260px;padding:16px}}
+
+/* alignment and evidence-record layout corrections */
+.custody-note{margin:0 20px 18px;padding:13px 15px;display:flex;align-items:flex-start;gap:10px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft);color:var(--muted);font-size:10px;line-height:1.55}
+.custody-note svg{flex:0 0 auto;color:var(--accent);margin-top:1px}
+.inspect-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:0 20px 16px}
+.upload-btn{position:relative;overflow:hidden}
+.upload-btn input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.anchor-panel{margin:0 20px 18px;padding:17px 18px;border:1px solid var(--line);border-radius:15px;background:#fbfcfd}
+.anchor-panel>div:first-child{display:flex;align-items:baseline;justify-content:space-between;gap:16px}
+.anchor-panel>div:first-child b{font-size:11px}
+.anchor-line{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;margin-top:13px;border:1px solid var(--line);border-radius:11px;overflow:hidden;background:var(--line)}
+.anchor-line>div{min-width:0;padding:11px;background:#fff;display:grid;gap:5px}
+.anchor-line span{color:var(--faint);font:600 8px var(--mono)}
+.anchor-line b{font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.anchor-line code{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.anchor-status{display:flex;align-items:center;gap:7px;margin-top:11px;color:var(--muted);font-size:9px}
+.anchor-status svg{color:var(--success);flex:0 0 auto}
+.versions,.custody-events{margin:0 20px 18px;border:1px solid var(--line);border-radius:15px;overflow:hidden;background:#fff}
+.version-head{min-height:52px;padding:0 15px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line)}
+.version-head b{font-size:11px}.version-head span{color:var(--muted);font:500 8px var(--mono);text-transform:uppercase}
+.version-row{min-height:68px;padding:11px 15px;display:grid;grid-template-columns:20px minmax(0,1fr) minmax(120px,.8fr) auto;align-items:center;gap:11px;border-bottom:1px solid var(--line)}
+.version-row:last-child{border-bottom:0}
+.version-row>svg{color:var(--muted)}
+.version-row>div{min-width:0;display:grid;gap:4px}
+.version-row b{font-size:10px}.version-row span{color:var(--muted);font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.version-row code{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.custody-events{margin-bottom:0}
+.custody-event:first-of-type{border-top:0}
+.member-list{padding:0 20px}
+.member-row{padding:14px 0}
+.member-row>div{min-width:0}
+.member-row b,.member-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.case-access>.inline-form{margin:14px 20px 0}
+.case-access>.notice{margin:12px 20px 0 20px}
+.case-access{padding-bottom:18px}
+
+@media(max-width:900px){
+ .anchor-line{grid-template-columns:1fr 1fr}
+ .version-row{grid-template-columns:20px minmax(0,1fr) auto}
+ .version-row code{grid-column:2;grid-row:2}
+ .version-row .secondary{grid-column:3;grid-row:1 / span 2}
+}
+@media(max-width:640px){
+ .custody-note,.inspect-actions,.anchor-panel,.versions,.custody-events{margin-left:14px;margin-right:14px}
+ .anchor-line{grid-template-columns:1fr}
+ .version-row{grid-template-columns:20px minmax(0,1fr)}
+ .version-row code{grid-column:2;grid-row:auto}
+ .version-row .secondary{grid-column:2;grid-row:auto;justify-self:start}
+ .case-access>.inline-form{margin-left:14px;margin-right:14px}
+ .case-access>.notice{margin-left:14px;margin-right:14px}
+ .member-list{padding:0 14px}
+}
