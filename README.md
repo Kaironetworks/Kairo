@@ -1,155 +1,141 @@
-# KAIRO
+# KAIRO — Trust, engineered.
 
-**Trust, engineered.**
-
-KAIRO is a secure digital document and evidence lifecycle platform for legal and investigation workflows.
+Secure digital evidence and document management for legal and investigative workflows — SIH 26190.
 
 ## Architecture
 
-- **Frontend:** React + Vite. The repository contains the polished `Trust, engineered.` landing experience and role-aware workspace.
-- **Backend:** Python + FastAPI. All protected operations are authorized server-side.
-- **Database:** SQLite for the portable build; the data model is structured for PostgreSQL migration in deployment.
-- **Evidence storage:** versioned filesystem objects for the portable build; use S3-compatible/WORM storage in production. PostgreSQL is metadata storage, not object storage.
-- **Integrity:** SHA-256 of actual evidence bytes for every immutable version.
-- **Identity:** JWT authenticated sessions with PBKDF2-SHA256 password verification.
-- **Authorization:** department/role permissions plus case membership.
-- **Custody & audit:** append-only audit events linked by SHA-256 hashes.
-- **Recovery:** protected trusted copy per version. Restoration creates a new version and preserves the incident history.
-- **Signatures:** RSA-PSS/SHA-256 over the registered evidence fingerprint.
-- **Governance:** retention and legal-hold state.
-- **Trust:** a pluggable trust-anchor boundary. The portable build uses a local cryptographic provider; Hyperledger Fabric is the deployment adapter, not document storage.
-- **Security validation:** `attackvector/` contains the controlled storage-tamper CLI.
+```text
+KAIRO Web
+   │
+   ▼
+FastAPI
+   ├── PostgreSQL → identity, cases, metadata, RBAC, audit, custody, incidents
+   └── MinIO/S3  → evidence bytes + trusted recovery copies
+                         │
+                         ▼
+                    SHA-256 integrity
+                         │
+                ┌────────┴────────┐
+                │                 │
+           local trust chain   Fabric boundary
+                │
+                └── AttackVector (controlled lab only)
+```
+
+PostgreSQL is the system-of-record database. **It is not object storage.** Evidence bytes belong in S3-compatible object storage. MinIO is the reference S3 deployment. For a zero-install run, KAIRO automatically falls back to SQLite + versioned local storage; this fallback is for portable prototyping, not the production architecture.
 
 ## Department access
 
-| Department / role | Primary capabilities |
+| Department | Main capabilities |
 |---|---|
-| Law Enforcement / Police | Create/manage assigned investigations, register evidence, retrieve evidence, verify integrity, controlled sharing |
-| Investigative / Specialized Agency | Investigation workflow, evidence lifecycle, collaboration, verification, document intelligence, governance |
-| Forensic / Scientific Laboratory | Integrity verification, version lineage, trusted restoration, signatures, forensic export, incidents, trust proofs |
-| Judiciary / Legal Institution | Authorized case/evidence review and integrity verification |
-| Audit / Compliance | Cross-case audit, incidents and trust oversight |
-| System Administration | User/role administration and platform operations; does not automatically receive evidence-editing authority |
+| Police / Law Enforcement | Cases, evidence registration/retrieval, verification, controlled sharing |
+| Investigative / Specialized Agency | Investigation workflow, evidence lifecycle, collaboration, verification, assistive intelligence |
+| Forensic / Scientific Laboratory | Integrity verification, versions, custody, restoration, signatures, intelligence, forensic export, trust |
+| Judiciary / Legal Institution | Authorized case/evidence review, verification, custody, reports, legal hold |
+| Audit / Compliance | Audit trail, incidents, trust ledger, governance oversight |
+| System Administration | Users, roles and platform administration; does not silently rewrite evidence |
 
-The UI is not the security boundary. Every protected API operation checks identity, role and case scope.
+The API is the security boundary. UI visibility is never treated as authorization.
 
 ## Evidence lifecycle
 
-`Register → fingerprint → version → custody → verify → share/sign → audit → trust-anchor`
+1. Register evidence and calculate SHA-256 over the actual bytes.
+2. Store an immutable version with a separate trusted recovery copy.
+3. Legitimate updates create a new version; old versions remain intact.
+4. Every important action creates an authenticated, hash-chained custody/audit event.
+5. Verification recalculates the current stored bytes.
+6. A mismatch creates an integrity incident.
+7. An authorized forensic user can restore a trusted version as a **new version**; the incident remains in history.
+8. Selected critical proofs can be anchored by the trust provider. Sensitive document bytes stay off-chain.
 
-A legitimate change creates a new version. An unauthorized storage-level modification does not become a new version; verification produces an integrity incident.
+## Controlled attack demonstration
 
-A SHA-256 mismatch proves that the observed bytes differ from the registered fingerprint. It does not, by itself, identify the attacker. Attribution requires correlation with application identity, storage access and infrastructure/security telemetry.
+`attackvector/` contains the only intentionally adversarial component. It changes a demonstration evidence object through a protected lab endpoint. It does not exploit the host operating system.
 
-## Recovery model
-
-Every registered version has:
-
-1. an operational evidence object,
-2. a registered SHA-256 fingerprint,
-3. a protected recovery copy.
-
-If the operational object is modified, KAIRO can compare it with the registered fingerprint, raise an incident, recover the verified bytes, create a new restoration version and retain the original incident/audit trail.
-
-## Run
-
-The supplied build is designed to run without Docker and without Node.js on the demonstration host.
-
-Requirements: **Python 3.11+**
-
-Windows:
-
-```text
-START_KAIRO.bat
-```
-
-macOS/Linux:
-
-```bash
-chmod +x START_KAIRO.sh
-./START_KAIRO.sh
-```
-
-The server listens on port `8000` and prints its LAN address. Other laptops on the same Wi-Fi open that LAN address and use the same backend, database and evidence store.
-
-On Windows, allow Python through the firewall on the **Private network** if prompted.
-
-## Controlled attack validation
-
-From another laptop:
-
-```bash
-python attackvector/attack.py tamper --host http://HOST-IP:8000 --evidence-id 1 --version 1
-```
-
-or on Windows:
+Example:
 
 ```text
 ATTACKVECTOR.bat http://HOST-IP:8000 1 1
 ```
 
-This modifies only the selected demonstration evidence object through a protected KAIRO Security Lab endpoint. It is not an exploit against arbitrary systems.
-
-After the simulated modification:
-
-`Verify → Integrity mismatch → Incident → Restore trusted version → Verify again`
-
-## Trust proof
-
-The trust layer stores cryptographic proof, not evidence bytes.
+Then KAIRO verification should show:
 
 ```text
-Evidence bytes
-     ↓
-SHA-256
-     ↓
-KAIRO metadata / custody / audit
-     ↓
-Selected trust proof
-     ↓
-Hyperledger Fabric adapter in deployment
+REGISTERED SHA-256 != OBSERVED SHA-256
+        ↓
+INTEGRITY MISMATCH
+        ↓
+INCIDENT
+        ↓
+RESTORE TRUSTED VERSION
+        ↓
+NEW RESTORATION VERSION
+        ↓
+VERIFIED
 ```
 
-The portable provider is intentionally used so the complete application remains runnable without Docker or a Fabric network.
+## Run on a clean Windows laptop
 
-## Demo identities
-
-All included identities are synthetic:
-
-- `police@kairo.local`
-- `investigator@kairo.local`
-- `forensic@kairo.local`
-- `legal@kairo.local`
-- `auditor@kairo.local`
-- `admin@kairo.local`
-
-Password: `KairoDemo!2026`
-
-Demo case and documents are synthetic and should remain clearly labelled as demonstration data.
-
-## Repository
+Requires Python 3.11+.
 
 ```text
-Kairo/
-├── frontend/
-├── backend/
-├── blockchain/
-├── attackvector/
-├── data/
-├── README.md
-└── LICENSE
+INSTALL_KAIRO.bat
+START_KAIRO.bat
 ```
 
-`frontend/dist/` is retained as the runnable static build so the host does not need Node.js. Frontend source changes can be rebuilt separately with Node/Vite when doing development.
+The shipped frontend is prebuilt, so **Node/npm and Docker are not required to run the included prototype**.
 
-## Production path
+The host prints a LAN address. Every other laptop on the same Wi-Fi opens that address and uses the **same backend, database and evidence store**.
 
-For a real deployment, replace the portable components without changing the evidence lifecycle:
+## Demo accounts
 
-`SQLite → PostgreSQL`
+All seeded accounts use the same prototype password:
 
-`filesystem objects → S3-compatible/WORM object storage`
+```text
+KairoDemo!2026
+```
 
-`local trust provider → Hyperledger Fabric network`
+```text
+police@kairo.local
+investigator@kairo.local
+forensic@kairo.local
+legal@kairo.local
+auditor@kairo.local
+admin@kairo.local
+```
 
-and add institutional SSO/MFA, managed secrets/keys, TLS, centralized security telemetry, hardened storage policies and deployment-specific compliance controls.
+For zero-install SQLite mode, the seeded demo identities are deterministically repaired on startup. Set `KAIRO_RESET_DEMO_PASSWORDS=0` when using a persistent deployment where demo identities must not be overwritten.
+
+## Production-style PostgreSQL + MinIO
+
+Set:
+
+```text
+KAIRO_SECRET=use-a-random-secret-of-at-least-32-characters
+KAIRO_DATABASE_URL=postgresql+psycopg://kairo:PASSWORD@HOST:5432/kairo
+KAIRO_S3_ENDPOINT=http://HOST:9000
+KAIRO_S3_ACCESS_KEY=ACCESS_KEY
+KAIRO_S3_SECRET_KEY=SECRET_KEY
+KAIRO_S3_EVIDENCE_BUCKET=kairo-evidence
+KAIRO_S3_TRUSTED_BUCKET=kairo-trusted
+```
+
+KAIRO creates the required buckets and enables S3 object versioning where supported.
+
+## Trust / blockchain
+
+The portable prototype has a **real hash-chained local trust ledger** and a clearly separated trust-anchor provider. It does not claim that Fabric is connected when it is not.
+
+`blockchain/` is the boundary for a permissioned Hyperledger Fabric deployment. The intended production model stores cryptographic proof metadata on the ledger, not FIR/PDF/video bytes.
+
+## Repository structure
+
+```text
+frontend/       UI source + shipped build
+backend/        FastAPI application
+blockchain/     trust-anchor provider + CLI
+attackvector/   controlled storage-tamper lab
+ data/          synthetic demo documents and runtime storage
+README.md
+LICENSE
+```

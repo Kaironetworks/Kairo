@@ -39,30 +39,17 @@ function TrustContext({user,onClose,mode="trust"}){
 function Shell({user,page,setPage,onLogout,children}){
  const [open,setOpen]=useState(false),[context,setContext]=useState(null);
  const has=p=>(user?.permissions||[]).includes("*")||(user?.permissions||[]).includes(p);
- const rolePages={
-  POLICE:new Set(["overview","cases","search","integrity","sharing"]),
-  INVESTIGATOR:new Set(["overview","cases","search","integrity","sharing","intelligence","governance"]),
-  FORENSIC:new Set(["overview","cases","search","integrity","intelligence","signatures","forensics","trust","incidents","governance"]),
-  LEGAL:new Set(["overview","search","integrity"]),
-  AUDITOR:new Set(["overview","cases","search","audit","incidents","trust"]),
-  ADMIN:new Set(["overview","admin","cases","search"])
- };
- const visible=rolePages[user.role]||rolePages.POLICE;
  const nav=[
   ["overview","Overview",Activity,true],
   ["cases","Investigations",Search,has("case.read")],
   ["search","Evidence",Search,has("evidence.read")],
   ["integrity","Verification",Fingerprint,has("evidence.verify")],
   ["sharing","Secure sharing",ExternalLink,has("evidence.share")],
-  ["intelligence","Intelligence",BrainCircuit,has("evidence.read")],
-  ["governance","Governance",LockKeyhole,has("evidence.create")||has("audit.read")],
-  ["signatures","Signatures",KeyRound,has("forensic.write")],
   ["forensics","Forensic export",FileArchive,has("forensic.write")||has("report.create")],
   ["trust","Trust ledger",Blocks,has("trust.read")],
   ["incidents","Incidents",AlertTriangle,has("incident.read")],
   ["audit","Audit trail",History,has("audit.read")],
-  ["admin","Administration",Server,has("admin.users")],
- ].filter(x=>x[3]&&visible.has(x[0]));
+ ].filter(x=>x[3]);
  return <div className="app-shell"><aside className={open?"sidebar open":"sidebar"}>
   <div className="side-head"><Logo/><button className="icon-btn mobile" onClick={()=>setOpen(false)} aria-label="Close navigation"><X/></button></div>
   <div className="side-context"><span>SECURE OPERATIONS</span><b>{roleLabel(user.role)}</b><small>Authorised workspace</small></div>
@@ -94,7 +81,7 @@ function Overview({user,setPage}){
  <div className="grid-2"><section className="panel"><PanelHead title="Active investigations" action={<button className="text-btn" onClick={()=>setPage("cases")}>View all <ArrowRight size={14}/></button>}/>
  {cases.length?cases.slice(0,4).map(c=><div className="case-row" key={c.id}><div className="case-icon"><Search size={17}/></div><div className="case-main"><b>{c.case_number}</b><span>{c.title}</span></div><span className="pill high">{c.priority}</span><ChevronRight size={16}/></div>):<Empty/>}</section>
  <section className="panel"><PanelHead title="Protection posture"/><div className="posture"><div className="posture-icon"><ShieldCheck/></div><div><b>Least privilege active</b><span>Your role is enforced by the API. Protected actions are denied server-side and can be audited.</span></div></div>
- <div className="mini-grid"><div><span>IDENTITY</span><b>JWT signed</b></div><div><span>STORAGE</span><b>Versioned object store</b></div><div><span>INTEGRITY</span><b>SHA-256</b></div><div><span>AUTHZ</span><b>RBAC</b></div></div></section></div>
+ <div className="mini-grid"><div><span>IDENTITY</span><b>JWT signed</b></div><div><span>STORAGE</span><b>MinIO</b></div><div><span>INTEGRITY</span><b>SHA-256</b></div><div><span>AUTHZ</span><b>RBAC</b></div></div></section></div>
  <div className="trust-strip"><ShieldCheck/><div><b>Evidence has a record, not just a location.</b><span>Capture → version → fingerprint → verify → audit. Selected trust proofs can be anchored independently without moving sensitive document bytes onto the ledger.</span></div></div></>
 }
 
@@ -130,9 +117,9 @@ function CaseDetail({id,onBack,user}){
  async function inspect(d){setSelected(d);setVerify(null);const [v,t,c]=await Promise.all([api.versions(d.id),api.documentTrust(d.id),api.custody(d.id)]);setVersions(v);setAnchors(t.anchors||[]);setCustody(c)}
  async function verifyDoc(){setVerify({busy:true});try{setVerify(await api.verify(selected.id))}catch(e){setVerify({error:e.message})}}
  if(!data)return <div className="loading">Loading investigation…</div>;
- return <><button className="back-btn" onClick={onBack}>← Cases</button><PageTitle eyebrow={data.case_number} title={data.title} desc={data.description} action={["POLICE","INVESTIGATOR"].includes(user.role)&&<button className="primary" onClick={()=>setShowUpload(true)}><UploadCloud size={16}/>Add evidence</button>}/>
+ return <><button className="back-btn" onClick={onBack}>← Cases</button><PageTitle eyebrow={data.case_number} title={data.title} desc={data.description} action={user.role!=="AUDITOR"&&<button className="primary" onClick={()=>setShowUpload(true)}><UploadCloud size={16}/>Add evidence</button>}/>
  <div className="case-banner"><div><span>LOCATION</span><b>{data.station}</b></div><div><span>STATUS</span><b>{data.status.replaceAll("_"," ")}</b></div><div><span>PRIORITY</span><b>{data.priority}</b></div><div><span>CASE ID</span><b>#{data.id}</b></div></div>
- <section className="panel case-access"><PanelHead title="Case access" action={<span className="panel-meta">Server-enforced membership</span>}/><div className="member-list">{members.map(m=><div className="member-row" key={m.id}><div><b>{m.full_name}</b><span>{m.email} · {roleLabel(m.role)} · {m.membership_role}</span></div>{m.user_id!==user?.id&&user?.role==="INVESTIGATOR"&&<button className="text-btn" onClick={()=>removeMember(m.id)} disabled={memberBusy}>Remove</button>}</div>)}</div>{user?.role==="INVESTIGATOR"&&<div className="inline-form"><input value={memberEmail} onChange={e=>setMemberEmail(e.target.value)} placeholder="Authorized user email"/><button className="primary" onClick={addMember} disabled={memberBusy}>{memberBusy?"Updating…":"Grant case access"}</button></div>}{memberMsg&&<div className="notice">{memberMsg}</div>}</section>
+ <section className="panel case-access"><PanelHead title="Case access" action={<span className="panel-meta">Server-enforced membership</span>}/><div className="member-list">{members.map(m=><div className="member-row" key={m.id}><div><b>{m.full_name}</b><span>{m.email} · {roleLabel(m.role)} · {m.membership_role}</span></div>{m.user_id!==user?.id&&user?.role==="INVESTIGATING_OFFICER"&&<button className="text-btn" onClick={()=>removeMember(m.id)} disabled={memberBusy}>Remove</button>}</div>)}</div>{user?.role==="INVESTIGATING_OFFICER"&&<div className="inline-form"><input value={memberEmail} onChange={e=>setMemberEmail(e.target.value)} placeholder="Authorized user email"/><button className="primary" onClick={addMember} disabled={memberBusy}>{memberBusy?"Updating…":"Grant case access"}</button></div>}{memberMsg&&<div className="notice">{memberMsg}</div>}</section>
  <section className="panel"><PanelHead title="Evidence collection" action={<span className="panel-meta">{docs.length} document{docs.length!==1?"s":""}</span>}/>{docs.length?docs.map(d=><div className="doc-row" key={d.id}><div className="doc-icon"><FileCheck2/></div><div className="doc-main"><b>{d.document_number} · {d.title}</b><span>{d.document_type} · {d.classification} · Version {d.current_version}</span></div><button className="secondary" onClick={()=>inspect(d)}><Eye size={15}/>Inspect</button></div>):<Empty/>}</section>
  {selected&&<EvidenceInspector doc={selected} versions={versions} anchors={anchors} custody={custody} verify={verify} onVerify={verifyDoc} onClose={()=>setSelected(null)} onVersion={async file=>{await api.newVersion(selected.id,file);await inspect(selected);await load()}}/>}
  {showUpload&&<UploadModal caseId={id} onClose={()=>setShowUpload(false)} onDone={()=>{setShowUpload(false);load()}}/>}</>
@@ -216,11 +203,6 @@ function Intelligence({user}){
  async function detectRedactions(){
   await act(()=>api.redact(Number(doc)),r=>r.message||`Redacted ${r.count} finding(s).`)
  }
- async function runTamperDemo(){
-  if(!doc)return;
-  if(!window.confirm("Run the controlled storage-tamper simulation against this evidence?"))return;
-  await act(()=>api.tamperDemo(Number(doc)),r=>r.message||"Controlled tamper applied. Run Verification to detect the mismatch.");
- }
  async function sealCurrent(){
   if(!window.confirm("Seal the current evidence version? Further modification will be blocked."))return;
   await act(()=>api.seal(Number(doc),data.current_version),()=>"Evidence sealed. Further modification is blocked.")
@@ -270,11 +252,10 @@ function Intelligence({user}){
    <section className="panel">
     <PanelHead title="Evidence controls"/>
     <div className="actions">
-     {["FORENSIC","ADMIN"].includes(user.role)&&<>
+     {user.role!=="AUDITOR"&&<>
       <button className="secondary" disabled={busy} onClick={detectRedactions}><ScanText size={15}/>Detect &amp; redact</button>
       {data.redaction_count>0&&<button className="secondary" disabled={busy} onClick={downloadRedacted}>Download redacted copy</button>}
       {!data.sealed&&<button className="secondary" disabled={busy} onClick={sealCurrent}><FileLock2 size={15}/>Seal current version</button>}
-      {!data.sealed&&<button className="secondary" disabled={busy} onClick={runTamperDemo}><FileWarning size={15}/>Tamper demo</button>}
      </>}
     </div>
    </section>
@@ -292,18 +273,18 @@ function Intelligence({user}){
  </>
 }
 
-function TrustLedger({onProof}){
+function TrustLedger(){
  const [data,setData]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState("");
  async function load(){try{setError("");const ledger=await api.trustLedger(80);setData(ledger)}catch(e){setError(e.message)}}
  async function verify(){setBusy(true);try{const r=await api.trustVerify();setData(d=>d?{...d,status:r}:d);await load()}catch(e){setError(e.message)}finally{setBusy(false)}}
  useEffect(()=>{load()},[]);
  const status=data?.status;
- return <><PageTitle eyebrow="INDEPENDENT TRUST ANCHOR" title="Trust ledger" desc="Operational trust history for evidence events. Detailed live Fabric transaction monitoring is separated into a dedicated proof console." action={<div className="actions"><button className="secondary" onClick={onProof}>Open live blockchain proof</button><button className="secondary" onClick={load}><RefreshCw size={15}/>Refresh</button></div>}/>
+ return <><PageTitle eyebrow="INDEPENDENT TRUST CHAIN" title="Trust ledger" desc="A real SHA-256 hash-chained audit ledger for KAIRO events. Evidence bytes remain off-chain; this screen does not claim a Fabric connection unless one is actually deployed." action={<button className="secondary" onClick={load}><RefreshCw size={15}/>Refresh</button>}/>
  {error&&<div className="error banner">{error}</div>}
  <div className="ledger-hero"><div className={"ledger-seal "+(status?.verified===false?"bad":"")}><Blocks size={34}/></div><div className="ledger-copy"><div className="eyebrow">KAIRO TRUST CHAIN</div><h2>{status?.verified===false?"LEDGER INTEGRITY FAILED":status?"LEDGER VERIFIED":"Loading trust state…"}</h2><p>{status?`${status.blocks} blocks linked by SHA-256 event hashes. Every block points to the previous block.`:"Building independent trust state."}</p></div><button className="primary" onClick={verify} disabled={busy||!data}>{busy?"Working…":"Verify ledger chain"}<CheckCircle2 size={16}/></button></div>
  <div className="stats ledger-stats"><Stat Icon={Blocks} label="Blocks" value={status?.blocks??"—"} detail="recorded trust events"/><Stat Icon={Link2} label="Latest index" value={status?.latest_block??"—"} detail="latest ledger block"/><Stat Icon={Fingerprint} label="Hashing" value="SHA-256" detail="event fingerprints"/><Stat Icon={ShieldCheck} label="Integrity" value={status?.verified===false?"FAILED":"VERIFIED"} detail="local trust chain"/></div>
  <section className="panel"><PanelHead title="Immutable trust sequence" action={<span className="panel-meta">Newest first</span>}/>{data?.blocks?.length?data.blocks.map(b=><div className="ledger-row" key={b.block_index}><div className="block-number">#{b.block_index}</div><div className="ledger-main"><b>{b.action.replaceAll("_"," ")}</b><span>{b.target_type} · {b.target_id} · {b.result}</span><code>tx {b.transaction_id.slice(0,20)}…</code></div><div className="hash-pair"><span>EVENT</span><code>{b.event_hash.slice(0,18)}…</code><span>PREVIOUS</span><code>{b.previous_hash.slice(0,18)}…</code></div><CheckCircle2 size={17}/></div>):<Empty>Loading trust ledger…</Empty>}</section>
- <div className="trust-strip"><Blocks/><div><b>Two trust layers</b><span>KAIRO's local chain detects audit-history changes; Hyperledger Fabric provides an independent permissioned ledger anchor for selected evidence proofs.</span></div></div></>
+ <div className="trust-strip"><Blocks/><div><b>Cryptographic trust layer</b><span>Every recorded event is linked to the previous event with SHA-256. This prototype exposes the actual local chain and does not present it as Hyperledger Fabric.</span></div></div></>
 }
 
 function Incidents({user,onValidation}){
@@ -330,7 +311,7 @@ function Security({user,onBack}){
  {msg&&<div className="notice banner">{msg}</div>}
  <section className="panel"><PanelHead title="Select demonstration evidence"/><div className="toolbar"><DocumentPicker value={doc} onChange={setDoc}/><button className="primary" disabled={busy||!doc} onClick={run}>{busy?"Running validation…":"Run controlled integrity test"}<ShieldAlert size={16}/></button></div></section>
  <div className="grid-2"><section className="panel security-card"><div className="security-icon"><UserRound/></div><div className="eyebrow">CONTROLLED TEST</div><h2>Authorized workflow remains the product.</h2><p>Your operational workspace creates versions only after authentication, RBAC and case-scope checks. This console exists only to validate the detector against a controlled demonstration object.</p><div className="security-flow"><span>IDENTITY</span><b>{roleLabel(user.role)}</b><ArrowRight/><span>RBAC</span><b>ENFORCED</b><ArrowRight/><span>CUSTODY</span><b>RECORDED</b></div></section>
- <section className="panel security-card"><div className="security-icon"><ShieldAlert/></div><div className="eyebrow">INTEGRITY TEST</div><h2>Stored bytes → hash mismatch → incident.</h2><p>The test changes the demo object's stored bytes without creating a new authorized version. Verification should then fail and the incident register should receive a traceable event.</p><div className="security-flow"><span>OBJECT STORE</span><b>CHANGE</b><ArrowRight/><span>SHA-256</span><b>MISMATCH</b><ArrowRight/><span>RESPONSE</span><b>INCIDENT</b></div></section></div>
+ <section className="panel security-card"><div className="security-icon"><ShieldAlert/></div><div className="eyebrow">INTEGRITY TEST</div><h2>Stored bytes → hash mismatch → incident.</h2><p>The test changes the demo object's stored bytes without creating a new authorized version. Verification should then fail and the incident register should receive a traceable event.</p><div className="security-flow"><span>MINIO</span><b>CHANGE</b><ArrowRight/><span>SHA-256</span><b>MISMATCH</b><ArrowRight/><span>RESPONSE</span><b>INCIDENT</b></div></section></div>
  <div className="trust-strip"><ShieldCheck/><div><b>Scope boundary</b><span>This page is not an operational security dashboard and is not required for day-to-day evidence handling. It is a controlled proof surface for demonstrations, QA and investigator training.</span></div></div></>
 }
 
@@ -343,19 +324,19 @@ function BlockchainProof({onBack}){
  useEffect(()=>{poll(true);const t=setInterval(()=>poll(false),2000);return()=>clearInterval(t)},[]);
  async function anchor(){
   if(!doc)return setError("Select evidence first.");
-  setBusy(true);setError("");addLog(`Creating trust proof for evidence ${doc}…`);
-  try{const r=await api.blockchainAnchor(Number(doc));const anchor=r.anchor_id||r.anchor?.anchor_id;if(!anchor)throw new Error("Trust provider did not return an anchor identifier.");addLog(`Trust proof created: ${anchor}`,"ok");addLog(`Evidence hash anchored; document bytes remain off-chain`,"ok");await poll(false)}catch(e){setError(e.message);addLog("Anchor failed: "+e.message,"error")}finally{setBusy(false)}
+  setBusy(true);setError("");addLog(`Submitting evidence anchor for document ${doc}…`);
+  try{const r=await api.blockchainAnchor(Number(doc));const tx=r.fabric?.txId||r.fabric?.tx_id||r.txId||r.tx_id;if(!tx)throw new Error("Fabric did not return a transaction ID; anchor not treated as confirmed.");addLog(`Fabric transaction committed: ${tx}`,"ok");addLog(`Evidence hash anchored; document bytes remain off-chain`,"ok");await poll(false)}catch(e){setError(e.message);addLog("Anchor failed: "+e.message,"error")}finally{setBusy(false)}
  }
- return <><PageTitle eyebrow="PROOF CONSOLE / TRUST LAYER" title="Trust proof console" desc="A dedicated demonstration surface for observing the real permissioned-ledger transaction path. The operational product remains focused on cases, evidence and governance." action={<button className="secondary" onClick={onBack}>Back to trust ledger</button>}/>
- <section className="terminal-panel"><div className="terminal-head"><div><span className="terminal-dot"/>KAIRO TRUST GATEWAY</div><span>{status?.reachable?"LIVE":"OFFLINE"}</span></div><div className="terminal-screen">
+ return <><PageTitle eyebrow="PROOF CONSOLE / HYPERLEDGER FABRIC" title="Live blockchain proof" desc="A dedicated demonstration surface for observing the real permissioned-ledger transaction path. The operational product remains focused on cases, evidence and governance." action={<button className="secondary" onClick={onBack}>Back to trust ledger</button>}/>
+ <section className="terminal-panel"><div className="terminal-head"><div><span className="terminal-dot"/>KAIRO FABRIC GATEWAY</div><span>{status?.reachable?"LIVE":"OFFLINE"}</span></div><div className="terminal-screen">
    <div className="terminal-command">$ kairo fabric status --watch</div>
-   <div className="terminal-line"><span>[{new Date().toLocaleTimeString()}]</span> provider: <b>{status?.provider?"LOCAL TRUST PROVIDER":"WAITING"}</b></div>
-   <div className="terminal-line"><span>mode:</span> {status?.provider||"unavailable"}</div>
-   <div className="terminal-line"><span>anchor:</span> cryptographic evidence proof</div>
-   <div className="terminal-line"><span>deployment:</span> Hyperledger Fabric adapter boundary</div>
+   <div className="terminal-line"><span>[{new Date().toLocaleTimeString()}]</span> gateway: <b>{status?.reachable?"CONNECTED":"WAITING"}</b></div>
+   <div className="terminal-line"><span>channel:</span> {status?.channel||"mychannel"}</div>
+   <div className="terminal-line"><span>chaincode:</span> {status?.chaincode||"kairo-trust"}</div>
+   <div className="terminal-line"><span>network:</span> {status?.blockchain||"hyperledger-fabric"}</div>
    {logs.map(l=><div className={`terminal-line terminal-${l.type}`} key={l.id}><span>[{l.time}]</span> {l.text}</div>)}
   </div></section>
- <section className="panel"><PanelHead title="Anchor a real evidence proof" action={<span className="panel-meta">Only provider-confirmed trust proofs are displayed</span>}/><div className="toolbar"><DocumentPicker value={doc} onChange={setDoc}/><button className="primary" disabled={!(!status?.provider)||busy||!doc} onClick={anchor}>{busy?"Submitting transaction…":"Create trust proof"}<Link2 size={15}/></button></div>{error&&<div className="error banner">{error}</div>}<div className="proof-grid"><div><span>ON-CHAIN</span><b>Document ID + version</b></div><div><span>ON-CHAIN</span><b>SHA-256 + custody digest</b></div><div><span>OFF-CHAIN</span><b>Original evidence bytes</b></div><div><span>PROOF</span><b>Fabric transaction ID</b></div></div></section>
+ <section className="panel"><PanelHead title="Anchor a real evidence proof" action={<span className="panel-meta">Only confirmed Fabric TX IDs are displayed</span>}/><div className="toolbar"><DocumentPicker value={doc} onChange={setDoc}/><button className="primary" disabled={!status?.reachable||busy||!doc} onClick={anchor}>{busy?"Submitting transaction…":"Submit Fabric transaction"}<Link2 size={15}/></button></div>{error&&<div className="error banner">{error}</div>}<div className="proof-grid"><div><span>ON-CHAIN</span><b>Document ID + version</b></div><div><span>ON-CHAIN</span><b>SHA-256 + custody digest</b></div><div><span>OFF-CHAIN</span><b>Original evidence bytes</b></div><div><span>PROOF</span><b>Fabric transaction ID</b></div></div></section>
  <div className="trust-strip"><Blocks/><div><b>Real blockchain boundary</b><span>KAIRO stores sensitive evidence off-chain. Fabric receives only the proof metadata required to independently attest that a specific evidence fingerprint and custody event were anchored. If Fabric is unavailable, KAIRO never fabricates a successful transaction.</span></div></div></>
 }
 
@@ -384,27 +365,6 @@ function Audit(){
    <div className="audit-details"><span>EVENT DETAILS</span><code>{selected.details||"No additional details recorded for this event."}</code></div>
  </section></div>}
  </>}
-
-
-function Admin(){
- const [users,setUsers]=useState([]),[msg,setMsg]=useState(""),[busy,setBusy]=useState(false);
- const [form,setForm]=useState({name:"",email:"",role:"POLICE",password:""});
- async function load(){try{setUsers(await api.adminUsers())}catch(e){setMsg(e.message)}}
- useEffect(()=>{load()},[]);
- async function create(e){e.preventDefault();setBusy(true);setMsg("");try{await api.adminCreateUser(form);setForm({name:"",email:"",role:"POLICE",password:""});setMsg("User created.");await load()}catch(e){setMsg(e.message)}finally{setBusy(false)}}
- async function toggle(u){try{await api.adminUserStatus(u.id,!u.active);await load()}catch(e){setMsg(e.message)}}
- return <><PageTitle eyebrow="SYSTEM ADMINISTRATION" title="Identity administration" desc="Create institutional identities and assign least-privilege roles. Evidence authority remains separate from platform administration."/>
- {msg&&<div className="notice banner">{msg}</div>}
- <section className="panel"><PanelHead title="Create user"/><form className="form-grid" onSubmit={create}>
-  <label>Name<input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Officer name"/></label>
-  <label>Email<input required type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} placeholder="name@agency.gov"/></label>
-  <label>Department role<select value={form.role} onChange={e=>setForm({...form,role:e.target.value})}>{Object.keys({POLICE:1,INVESTIGATOR:1,FORENSIC:1,LEGAL:1,AUDITOR:1,ADMIN:1}).map(r=><option key={r}>{r}</option>)}</select></label>
-  <label>Temporary password<input required minLength="10" type="password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})} placeholder="At least 10 characters"/></label>
-  <div className="modal-actions"><button className="primary" disabled={busy}>{busy?"Creating…":"Create identity"}<Plus size={15}/></button></div>
- </form></section>
- <section className="panel"><PanelHead title="Registered identities"/>{users.map(u=><div className="table-row" key={u.id}><div><b>{u.name}</b><span>{u.email} · {u.role}</span></div><span>{u.active?"ACTIVE":"DISABLED"}</span><button className="text-btn" onClick={()=>toggle(u)}>{u.active?"Disable":"Enable"}</button></div>)}{!users.length&&<Empty>No identities found.</Empty>}</section>
- <div className="trust-strip"><Server/><div><b>Separation of duties</b><span>Administration manages identity and policy. Evidence modification remains governed by case membership and role-specific permissions.</span></div></div></>
-}
 
 class AppErrorBoundary extends Component {
  constructor(props){super(props);this.state={error:null}}
@@ -437,10 +397,10 @@ function App(){
  if(checking)return <div className="splash"><Logo/><span>Establishing secure session…</span></div>;
  if(!user)return <Login onLogin={completeLogin}/>;
  const can=p=>(user.permissions||[]).includes("*")||(user.permissions||[]).includes(p);
- const rolePages={POLICE:new Set(["overview","cases","search","integrity","sharing"]),INVESTIGATOR:new Set(["overview","cases","search","integrity","sharing","intelligence","governance"]),FORENSIC:new Set(["overview","cases","search","integrity","intelligence","signatures","forensics","trust","incidents","governance"]),LEGAL:new Set(["overview","search","integrity"]),AUDITOR:new Set(["overview","cases","search","audit","incidents","trust"]),ADMIN:new Set(["overview","admin","cases","search"])}; const visible=rolePages[user.role]||rolePages.POLICE; const allowedPage=visible.has(page)&& (page==="overview"||page==="cases"&&can("case.read")||page==="search"&&can("evidence.read")||page==="integrity"&&can("evidence.verify")||page==="sharing"&&can("evidence.share")||page==="forensics"&&(can("forensic.write")||can("report.create"))||page==="signatures"&&can("forensic.write")||page==="intelligence"&&can("evidence.read")||page==="governance"&&(can("evidence.create")||can("audit.read"))||page==="trust"&&can("trust.read")||page==="incidents"&&can("incident.read")||page==="audit"&&can("audit.read")||page==="admin"&&can("admin.users"));
+ const allowedPage=page==="overview"||page==="cases"&&can("case.read")||page==="search"&&can("evidence.read")||page==="integrity"&&can("evidence.verify")||page==="sharing"&&can("evidence.share")||page==="forensics"&&(can("forensic.write")||can("report.create"))||page==="trust"&&can("trust.read")||page==="incidents"&&can("incident.read")||page==="audit"&&can("audit.read")||page==="signatures"&&can("report.create")||page==="admin"&&can("*");
  if(!allowedPage){setPage("overview");localStorage.setItem("kairo_page","overview");}
  const safePage=allowedPage?page:"overview";
- const content=selected?<CaseDetail id={selected} user={user} onBack={()=>setSelected(null)}/>:safePage==="overview"?<Overview user={user} setPage={setPage}/>:safePage==="cases"?<Cases setSelected={setSelected} user={user} onCreate={()=>setShowCaseCreate(true)}/>:safePage==="search"?<SearchPage setSelected={setSelected}/>:safePage==="integrity"?<Integrity/>:safePage==="sharing"?<Sharing/>:safePage==="forensics"?<ForensicExport/>:safePage==="signatures"?<Signatures/>:safePage==="intelligence"?<Intelligence user={user}/>:safePage==="governance"?<Governance user={user}/>:safePage==="trust"?<TrustLedger onProof={()=>setPage("trust-proof")}/>:safePage==="trust-proof"?<BlockchainProof onBack={()=>setPage("trust")}/>:safePage==="incidents"?<Incidents user={user} onValidation={()=>setPage("incidents")}/>:safePage==="audit"?<Audit/>:safePage==="admin"?<Admin/>:<Overview user={user} setPage={setPage}/>;
+ const content=selected?<CaseDetail id={selected} user={user} onBack={()=>setSelected(null)}/>:safePage==="overview"?<Overview user={user} setPage={setPage}/>:safePage==="cases"?<Cases setSelected={setSelected} user={user} onCreate={()=>setShowCaseCreate(true)}/>:safePage==="search"?<SearchPage setSelected={setSelected}/>:safePage==="integrity"?<Integrity/>:safePage==="sharing"?<Sharing/>:safePage==="forensics"?<ForensicExport/>:safePage==="trust"?<TrustLedger/>:safePage==="incidents"?<Incidents user={user} onValidation={()=>setPage("incidents")}/>:safePage==="audit"?<Audit/>:safePage==="signatures"?<Signatures/>:<Overview user={user} setPage={setPage}/>;
  return <Shell user={user} page={selected?"case":page} setPage={p=>{setSelected(null);setPage(p);localStorage.setItem("kairo_page",p)}} onLogout={logout}>{content}{showCaseCreate&&<CaseCreateModal onClose={()=>setShowCaseCreate(false)} onCreated={id=>{setShowCaseCreate(false);setSelected(id);setPage("cases")}}/>}</Shell>
 }
 
@@ -482,12 +442,12 @@ function ForensicExport(){
  return <><PageTitle eyebrow="FORENSIC PACKAGE" title="Forensic export" desc="Generate a portable, integrity-oriented evidence package containing case metadata, versions, custody, signatures, governance, audit history and optional verified evidence bytes."/><section className="panel"><PanelHead title="Evidence package"/><DocumentPicker value={doc} onChange={setDoc}/><div className="export-options"><label className="check-row"><input type="checkbox" checked={includeBytes} onChange={e=>setIncludeBytes(e.target.checked)}/><span><b>Include evidence bytes</b><small>Each version is SHA-256 verified before it enters the package.</small></span></label><button className="primary" disabled={busy||!doc} onClick={exportPackage}>{busy?"Building package…":"Export forensic package"}<FileArchive size={16}/></button></div>{msg&&<div className="notice banner">{msg}</div>}</section><div className="grid-2"><section className="panel security-card"><div className="eyebrow">PACKAGE CONTENT</div><h2>Proof travels with the evidence.</h2><p>Manifest, case metadata, version fingerprints, custody record, signatures, governance state and relevant audit events are bundled into one portable ZIP.</p></section><section className="panel security-card"><div className="eyebrow">SAFE EXPORT</div><h2>Integrity checked before bytes leave.</h2><p>If any requested version fails its registered SHA-256, KAIRO refuses to build the byte-inclusive package.</p></section></div></>
 }
 
-function Governance({user}){
+function Governance(){
  const [doc,setDoc]=useState(""),[g,setG]=useState(null),[summary,setSummary]=useState(null),[days,setDays]=useState("365"),[reason,setReason]=useState("Investigation retention requirement"),[holdReason,setHoldReason]=useState("Legal hold for active investigation"),[msg,setMsg]=useState(""),[busy,setBusy]=useState(false);
  async function load(){try{const s=await api.governanceSummary();setSummary(s);if(doc)setG(await api.governance(Number(doc)));}catch(e){setMsg(e.message)}} useEffect(()=>{load()},[doc]);
  async function retention(){setBusy(true);try{const d=new Date(Date.now()+Number(days)*86400000).toISOString();await api.retention(Number(doc),{retain_until:d,reason});setMsg(`Retention set until ${new Date(d).toLocaleDateString()}.`);await load()}catch(e){setMsg(e.message)}finally{setBusy(false)}}
  async function hold(active){setBusy(true);try{await api.legalHold(Number(doc),{active,reason:holdReason});setMsg(active?"Legal hold placed.":"Legal hold released.");await load()}catch(e){setMsg(e.message)}finally{setBusy(false)}}
- return <><PageTitle eyebrow="GOVERNANCE & COMPLIANCE" title="Retention and legal hold" desc="Operational controls for keeping evidence available for the required period and preventing release/expiry while a legal hold is active."/><div className="stats"><Stat Icon={LockKeyhole} label="Active holds" value={summary?.active_legal_holds??"—"} detail="protected documents"/><Stat Icon={Clock3} label="Retention policies" value={summary?.retention_policies??"—"} detail="configured"/><Stat Icon={KeyRound} label="Signatures" value={summary?.signatures??"—"} detail="cryptographic approvals"/><Stat Icon={ExternalLink} label="Active shares" value={summary?.active_shares??"—"} detail="time-bound access"/></div>{msg&&<div className="notice banner">{msg}</div>}<section className="panel"><PanelHead title="Document governance"/><DocumentPicker value={doc} onChange={setDoc}/>{doc&&<div className="governance-grid"><div className="governance-card"><div className="eyebrow">RETENTION</div><h3>{g?.retention?`Retain until ${new Date(g.retention.retain_until).toLocaleDateString()}`:"No retention policy"}</h3><p>{g?.retention?.reason||"Set a retention period for this evidence."}</p>{["ADMIN","INVESTIGATOR","FORENSIC"].includes(user?.role)&&<div className="inline-form"><select value={days} onChange={e=>setDays(e.target.value)}><option value="90">90 days</option><option value="365">1 year</option><option value="1095">3 years</option><option value="2555">7 years</option></select><button className="primary" disabled={busy} onClick={retention}>Set retention</button></div>}</div><div className="governance-card"><div className="eyebrow">LEGAL HOLD</div><h3>{g?.legal_hold?.active?"ACTIVE — protected":"Not active"}</h3><p>{g?.legal_hold?.reason||"A legal hold prevents the evidence from being treated as eligible for normal disposal."}</p>{["ADMIN","INVESTIGATOR","FORENSIC"].includes(user?.role)&&<><input value={holdReason} onChange={e=>setHoldReason(e.target.value)} placeholder="Hold reason"/><div className="actions"><button className="primary" disabled={busy} onClick={()=>hold(true)}>Place hold</button>{g?.legal_hold?.active&&<button className="secondary" disabled={busy} onClick={()=>hold(false)}>Release hold</button>}</div></>}</div></div>}</section><div className="trust-strip"><ShieldCheck/><div><b>Governance is enforced as state, not a label</b><span>Retention and legal-hold actions are stored as auditable records and can be connected to later deletion/export controls.</span></div></div></>
+ return <><PageTitle eyebrow="GOVERNANCE & COMPLIANCE" title="Retention and legal hold" desc="Operational controls for keeping evidence available for the required period and preventing release/expiry while a legal hold is active."/><div className="stats"><Stat Icon={LockKeyhole} label="Active holds" value={summary?.active_legal_holds??"—"} detail="protected documents"/><Stat Icon={Clock3} label="Retention policies" value={summary?.retention_policies??"—"} detail="configured"/><Stat Icon={KeyRound} label="Signatures" value={summary?.signatures??"—"} detail="cryptographic approvals"/><Stat Icon={ExternalLink} label="Active shares" value={summary?.active_shares??"—"} detail="time-bound access"/></div>{msg&&<div className="notice banner">{msg}</div>}<section className="panel"><PanelHead title="Document governance"/><DocumentPicker value={doc} onChange={setDoc}/>{doc&&<div className="governance-grid"><div className="governance-card"><div className="eyebrow">RETENTION</div><h3>{g?.retention?`Retain until ${new Date(g.retention.retain_until).toLocaleDateString()}`:"No retention policy"}</h3><p>{g?.retention?.reason||"Set a retention period for this evidence."}</p><div className="inline-form"><select value={days} onChange={e=>setDays(e.target.value)}><option value="90">90 days</option><option value="365">1 year</option><option value="1095">3 years</option><option value="2555">7 years</option></select><button className="primary" disabled={busy} onClick={retention}>Set retention</button></div></div><div className="governance-card"><div className="eyebrow">LEGAL HOLD</div><h3>{g?.legal_hold?.active?"ACTIVE — protected":"Not active"}</h3><p>{g?.legal_hold?.reason||"A legal hold prevents the evidence from being treated as eligible for normal disposal."}</p><input value={holdReason} onChange={e=>setHoldReason(e.target.value)} placeholder="Hold reason"/><div className="actions"><button className="primary" disabled={busy} onClick={()=>hold(true)}>Place hold</button>{g?.legal_hold?.active&&<button className="secondary" disabled={busy} onClick={()=>hold(false)}>Release hold</button>}</div></div></div>}</section><div className="trust-strip"><ShieldCheck/><div><b>Governance is enforced as state, not a label</b><span>Retention and legal-hold actions are stored as auditable records and can be connected to later deletion/export controls.</span></div></div></>
 }
 
 export default function KairoApplication(){return <AppErrorBoundary><App/></AppErrorBoundary>}

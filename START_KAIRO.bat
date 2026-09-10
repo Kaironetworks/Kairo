@@ -1,52 +1,23 @@
 @echo off
-setlocal EnableExtensions
+setlocal
 cd /d "%~dp0"
-title KAIRO - Start
-
-echo.
-echo ==========================================
-echo              KAIRO START
-echo ==========================================
-echo.
-
-where py >nul 2>&1
-if errorlevel 1 goto PYTHON_ERROR
-
+title KAIRO - Secure Evidence Platform
 if not exist ".venv\Scripts\python.exe" (
   echo [INFO] Creating Python environment...
-  py -3 -m venv ".venv"
-  if errorlevel 1 goto VENV_ERROR
+  py -3 -m venv .venv || goto :fail
 )
-
-echo [INFO] Checking backend dependencies...
-".venv\Scripts\python.exe" -c "import fastapi,uvicorn,jwt,multipart,cryptography" >nul 2>&1
-if errorlevel 1 (
+if not exist ".venv\Lib\site-packages\fastapi" (
   echo [INFO] Installing backend dependencies...
-  ".venv\Scripts\python.exe" -m pip install -r "backend\requirements.txt"
-  if errorlevel 1 goto INSTALL_ERROR
+  .venv\Scripts\python.exe -m pip install -r backend\requirements.txt || goto :fail
 )
-
 echo.
-echo ==========================================
-echo       KAIRO IS READY - NO DOCKER/NO NODE
-echo ==========================================
+echo KAIRO is starting on all network interfaces.
+echo Other laptops on the same Wi-Fi can use the LAN address printed below.
 echo.
-echo The same server is shared by all laptops.
-echo Keep this window open.
+.venv\Scripts\python.exe start.py
+exit /b %errorlevel%
+:fail
 echo.
-
-".venv\Scripts\python.exe" start.py
-goto END
-
-:PYTHON_ERROR
-echo [ERROR] Python 3.11+ is required.
-goto FAIL
-:VENV_ERROR
-echo [ERROR] Could not create the Python environment.
-goto FAIL
-:INSTALL_ERROR
-echo [ERROR] Backend dependencies could not be installed.
-goto FAIL
-:FAIL
+echo KAIRO could not start. Install Python 3.11+ and check your network connection.
 pause
-:END
+exit /b 1

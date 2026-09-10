@@ -1,5 +1,8 @@
-fastapi==0.116.1
-uvicorn[standard]==0.35.0
-python-multipart==0.0.20
-PyJWT==2.10.1
-cryptography==46.0.4
+fastapi>=0.115,<1
+uvicorn[standard]>=0.34,<1
+PyJWT>=2.10,<3
+python-multipart>=0.0.20,<1
+SQLAlchemy>=2.0,<3
+psycopg[binary]>=3.2,<4
+boto3>=1.35,<2
+cryptography>=44,<46
