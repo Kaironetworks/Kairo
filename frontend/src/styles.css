@@ -445,3 +445,17 @@ code{font-family:var(--mono);font-size:11px}
 .fatal-error>div{width:min(680px,92vw);padding:44px;border:1px solid var(--line);border-radius:24px;background:#fff;box-shadow:var(--shadow-md)}
 .fatal-error h1{margin:10px 0 12px;font-size:clamp(42px,6vw,72px);line-height:.92;letter-spacing:-.07em}
 .fatal-error p{max-width:560px;margin:0 0 24px;color:var(--muted);font-size:13px;line-height:1.65}
+
+.extracted-preview{max-height:280px;overflow:auto;white-space:pre-wrap;line-height:1.65;color:var(--muted);font-size:14px;margin:0;}
+
+
+/* dedicated proof consoles: deliberately separated from the operational workspace */
+.terminal-panel{border:1px solid #203447;border-radius:24px;overflow:hidden;background:#08131f;box-shadow:0 18px 45px rgba(7,19,31,.16);margin-bottom:18px}
+.terminal-head{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;background:#0d1d2d;color:#d8e6f5;font:700 9px var(--mono);letter-spacing:.09em}
+.terminal-head>div{display:flex;align-items:center;gap:9px}.terminal-head>span{color:#79e2a5}
+.terminal-dot{width:8px;height:8px;border-radius:50%;background:#63d391;box-shadow:0 0 0 4px rgba(99,211,145,.12)}
+.terminal-screen{min-height:300px;padding:22px;font:500 11px/1.75 var(--mono);color:#d6e2ee;background:radial-gradient(circle at 80% 10%,rgba(44,104,190,.18),transparent 32%),#06101a}
+.terminal-command{color:#8bb8ff;margin-bottom:12px}.terminal-line{word-break:break-word}.terminal-line span{color:#6d879f}.terminal-ok{color:#79e2a5}.terminal-warn{color:#ffd166}.terminal-error{color:#ff8c8c}
+.proof-grid{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);margin-top:20px}.proof-grid>div{padding:18px;border-right:1px solid var(--line)}.proof-grid>div:last-child{border-right:0}.proof-grid span{display:block;color:var(--faint);font:600 8px var(--mono);letter-spacing:.08em;margin-bottom:7px}.proof-grid b{font-size:11px}
+@media(max-width:900px){.proof-grid{grid-template-columns:1fr 1fr}.proof-grid>div:nth-child(2){border-right:0}.proof-grid>div:nth-child(-n+2){border-bottom:1px solid var(--line)}}
+@media(max-width:640px){.proof-grid{grid-template-columns:1fr}.proof-grid>div{border-right:0!important;border-bottom:1px solid var(--line)}.proof-grid>div:last-child{border-bottom:0}.terminal-screen{min-height:260px;padding:16px}}

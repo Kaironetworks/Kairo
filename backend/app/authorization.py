@@ -29,6 +29,11 @@ class Permission(StrEnum):
     INCIDENT_READ = "incident:read"
     INCIDENT_RESOLVE = "incident:resolve"
     CASE_MEMBER_MANAGE = "case:member:manage"
+    DOCUMENT_INTELLIGENCE = "document:intelligence"
+    DOCUMENT_REDACT = "document:redact"
+    DOCUMENT_SEAL = "document:seal"
+    DOCUMENT_TAMPER_DEMO = "document:tamper_demo"
+    DOCUMENT_DELETE = "document:delete"
 
 
 ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
@@ -39,7 +44,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.DOCUMENT_VERSION_CREATE,
         Permission.DOCUMENT_VERIFY,
         Permission.DOCUMENT_DOWNLOAD,
-        Permission.TRUST_READ, Permission.SHARE_CREATE, Permission.SHARE_READ, Permission.SHARE_REVOKE, Permission.SIGN, Permission.SIGNATURE_READ, Permission.GOVERNANCE_READ, Permission.GOVERNANCE_MANAGE, Permission.INCIDENT_READ, Permission.INCIDENT_RESOLVE, Permission.CASE_MEMBER_MANAGE,
+        Permission.TRUST_READ, Permission.SHARE_CREATE, Permission.SHARE_READ, Permission.SHARE_REVOKE, Permission.SIGN, Permission.SIGNATURE_READ, Permission.GOVERNANCE_READ, Permission.GOVERNANCE_MANAGE, Permission.INCIDENT_READ, Permission.INCIDENT_RESOLVE, Permission.CASE_MEMBER_MANAGE, Permission.DOCUMENT_INTELLIGENCE, Permission.DOCUMENT_REDACT, Permission.DOCUMENT_SEAL, Permission.DOCUMENT_TAMPER_DEMO, Permission.DOCUMENT_DELETE,
     }),
     "FORENSIC_OFFICER": frozenset({
         Permission.CASE_READ, Permission.CASE_CREATE,
@@ -48,14 +53,21 @@ ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.DOCUMENT_VERSION_CREATE,
         Permission.DOCUMENT_VERIFY,
         Permission.DOCUMENT_DOWNLOAD,
-        Permission.TRUST_READ, Permission.SHARE_CREATE, Permission.SHARE_READ, Permission.SHARE_REVOKE, Permission.SIGN, Permission.SIGNATURE_READ, Permission.GOVERNANCE_READ, Permission.GOVERNANCE_MANAGE, Permission.INCIDENT_READ,
+        Permission.TRUST_READ, Permission.SHARE_CREATE, Permission.SHARE_READ, Permission.SHARE_REVOKE, Permission.SIGN, Permission.SIGNATURE_READ, Permission.GOVERNANCE_READ, Permission.GOVERNANCE_MANAGE, Permission.INCIDENT_READ, Permission.DOCUMENT_INTELLIGENCE, Permission.DOCUMENT_REDACT, Permission.DOCUMENT_SEAL, Permission.DOCUMENT_TAMPER_DEMO,
     }),
+    "LEGAL_OFFICER": frozenset({
+        Permission.CASE_READ, Permission.DOCUMENT_READ, Permission.DOCUMENT_VERIFY, Permission.DOCUMENT_DOWNLOAD,
+        Permission.TRUST_READ, Permission.SHARE_CREATE, Permission.SHARE_READ, Permission.SHARE_REVOKE,
+        Permission.SIGN, Permission.SIGNATURE_READ, Permission.GOVERNANCE_READ, Permission.GOVERNANCE_MANAGE,
+        Permission.INCIDENT_READ, Permission.DOCUMENT_INTELLIGENCE, Permission.DOCUMENT_REDACT, Permission.DOCUMENT_SEAL,
+    }),
+    "ADMIN": frozenset(Permission),
     "AUDITOR": frozenset({
         Permission.CASE_READ,
         Permission.DOCUMENT_READ,
         Permission.DOCUMENT_VERIFY,
         Permission.AUDIT_READ, Permission.INCIDENT_READ,
-        Permission.TRUST_READ, Permission.SHARE_READ, Permission.SIGNATURE_READ, Permission.GOVERNANCE_READ,
+        Permission.TRUST_READ, Permission.SHARE_READ, Permission.SIGNATURE_READ, Permission.GOVERNANCE_READ, Permission.DOCUMENT_INTELLIGENCE,
     }),
 }
 

@@ -28,6 +28,7 @@ from .trust_ledger import ensure_ledger, anchor_audit_event, list_blocks, verify
 from .custody import build_custody_record
 from .blockchain import status as blockchain_status, anchor as blockchain_anchor, read as blockchain_read, custody_digest
 from .incidents import ensure_incidents, open_integrity_incident, list_incidents, resolve_incident
+from .intelligence import extract_text, classify_document, redact_text, merkle_root, safe_filename, validate_extension
 from .governance import ensure_governance, create_share, list_shares, revoke_share, sign_record, list_signatures, verify_signature, set_retention, set_hold, governance
 from datetime import datetime, timezone, timedelta
 
@@ -77,6 +78,27 @@ def startup():
     with Session(engine) as db:
         db.execute(text("CREATE TABLE IF NOT EXISTS revoked_sessions (jti VARCHAR(80) PRIMARY KEY, user_id BIGINT, revoked_at TIMESTAMPTZ NOT NULL DEFAULT NOW())"))
         db.execute(text("CREATE SEQUENCE IF NOT EXISTS kairo_document_number_seq START WITH 1"))
+        # Lightweight forward migrations for prototype/local upgrades. Existing rows keep safe defaults.
+        for stmt in [
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS access_roles TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS extracted_text TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS ai_classification VARCHAR(80) NOT NULL DEFAULT ''",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS ai_confidence DOUBLE PRECISION NOT NULL DEFAULT 0",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS extraction_method VARCHAR(40) NOT NULL DEFAULT 'NONE'",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS redaction_count INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS sealed BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS sealed_version INTEGER",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS sealed_at TIMESTAMPTZ",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS sealed_by BIGINT",
+        ]:
+            db.execute(text(stmt))
+        db.execute(text("""CREATE TABLE IF NOT EXISTS document_redactions (
+            id BIGSERIAL PRIMARY KEY, document_id BIGINT NOT NULL, version INTEGER NOT NULL,
+            created_by BIGINT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            object_key VARCHAR(500) NOT NULL, findings TEXT NOT NULL DEFAULT '[]',
+            UNIQUE(document_id, version)
+        )"""))
         db.execute(text("SELECT setval('kairo_document_number_seq', COALESCE((SELECT MAX(CAST(SUBSTRING(document_number FROM '[0-9]+$') AS BIGINT)) FROM documents),0) + 1, false)"))
         db.execute(text("CREATE TABLE IF NOT EXISTS retention_dispositions (id BIGSERIAL PRIMARY KEY, document_id BIGINT UNIQUE NOT NULL, status VARCHAR(40) NOT NULL DEFAULT 'RETAINED', evaluated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), eligible_at TIMESTAMPTZ, disposed_at TIMESTAMPTZ, disposed_by BIGINT, reason TEXT NOT NULL DEFAULT '')"))
         db.commit()
@@ -133,6 +155,29 @@ def require_document_access(db: Session, user: User, document_id: int, *, write:
     return doc
 
 
+def ensure_document_mutable(db: Session, doc: Document, action: str):
+    hold = db.execute(text("SELECT active FROM legal_holds WHERE document_id=:d"), {"d": doc.id}).scalar()
+    if hold:
+        raise HTTPException(423, "Legal Hold is active. Modification or deletion is blocked.")
+    if doc.sealed:
+        raise HTTPException(423, "Evidence is sealed. Further modification is blocked.")
+
+
+def intelligence_payload(db: Session, doc: Document):
+    versions = list(db.scalars(select(DocumentVersion).where(DocumentVersion.document_id == doc.id).order_by(DocumentVersion.version.asc())))
+    return {
+        "document_id": doc.id, "document_number": doc.document_number, "title": doc.title,
+        "document_type": doc.document_type, "description": doc.description or "",
+        "classification": doc.classification, "current_version": doc.current_version,
+        "extracted_text": doc.extracted_text or "", "extracted_text_preview": (doc.extracted_text or "")[:1800],
+        "extraction_method": doc.extraction_method, "ai_classification": doc.ai_classification or doc.document_type,
+        "ai_confidence": float(doc.ai_confidence or 0), "redaction_count": doc.redaction_count or 0,
+        "sealed": bool(doc.sealed), "sealed_version": doc.sealed_version, "sealed_at": doc.sealed_at,
+        "merkle_root": merkle_root([v.sha256 for v in versions]),
+        "versions": [{"version": v.version, "sha256": v.sha256, "filename": v.original_filename, "size_bytes": v.size_bytes, "created_at": v.created_at, "uploaded_by": v.uploaded_by} for v in versions],
+    }
+
+
 def audit(
     db: Session,
     actor: User | None,
@@ -181,6 +226,12 @@ def deny(
             "role": user.role,
         },
     )
+
+
+@app.get("/health")
+def health_alias():
+    """Convenience health endpoint for local operators; mirrors the API health check."""
+    return health()
 
 
 @app.get("/api/health")
@@ -437,7 +488,7 @@ def search(
         pattern=f"%{q}%"
         filters.append(or_(Document.document_number.ilike(pattern), Document.title.ilike(pattern),
             Document.document_type.ilike(pattern), Document.classification.ilike(pattern), Case.case_number.ilike(pattern),
-            Case.title.ilike(pattern), Case.description.ilike(pattern), Case.station.ilike(pattern), latest.c.filename.ilike(pattern)))
+            Case.title.ilike(pattern), Case.description.ilike(pattern), Case.station.ilike(pattern), latest.c.filename.ilike(pattern), Document.extracted_text.ilike(pattern)))
     if filters: stmt=stmt.where(*filters)
     rows=db.execute(stmt).all()
     return [SearchResultOut(document_id=d.id, document_number=d.document_number, title=d.title,
@@ -492,6 +543,7 @@ async def upload_document(
     title: str = Form(...),
     document_type: str = Form(...),
     classification: str = Form("RESTRICTED"),
+    description: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission(Permission.DOCUMENT_UPLOAD)),
 ):
@@ -511,13 +563,19 @@ async def upload_document(
             "Forensic officer may upload only forensic/evidence document types",
         )
 
+    try:
+        validate_extension(file.filename)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     data = await file.read()
     if not data:
         raise HTTPException(400, "Empty file is not allowed")
-    if len(data) > 25 * 1024 * 1024:
-        raise HTTPException(413, "File exceeds the 25 MB prototype upload limit.")
+    if len(data) > 50 * 1024 * 1024:
+        raise HTTPException(413, "File exceeds the 50 MB prototype upload limit.")
 
     sha = hashlib.sha256(data).hexdigest()
+    extracted, extraction_method = extract_text(file.filename, data)
+    ai_classification, ai_confidence, ai_matches = classify_document(title, document_type, extracted)
     next_number = db.execute(text("SELECT nextval('kairo_document_number_seq')")).scalar_one()
 
     doc = Document(
@@ -527,6 +585,11 @@ async def upload_document(
         document_type=document_type,
         classification=classification.upper(),
         current_version=1,
+        description=description.strip(),
+        extracted_text=extracted,
+        ai_classification=ai_classification,
+        ai_confidence=ai_confidence,
+        extraction_method=extraction_method,
     )
 
     db.add(doc)
@@ -570,6 +633,11 @@ async def upload_document(
             "version": 1,
             "case_id": case_id,
             "classification": classification.upper(),
+            "ai_classification": ai_classification,
+            "ai_confidence": ai_confidence,
+            "extraction_method": extraction_method,
+            "classification_matches": ai_matches,
+            "description_present": bool(description.strip()),
         }),
     )
 
@@ -592,14 +660,19 @@ async def create_document_version(
     a new versioned object key and gets its own SHA-256 fingerprint.
     """
     doc = require_document_access(db, user, document_id, write=True)
+    ensure_document_mutable(db, doc, "DOCUMENT_VERSION_CREATE")
     # Serialize version allocation per document; PostgreSQL advisory locks are transaction-scoped.
     db.execute(text("SELECT pg_advisory_xact_lock(:doc_id)"), {"doc_id": document_id})
 
+    try:
+        validate_extension(file.filename)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     data = await file.read()
     if not data:
         raise HTTPException(400, "Empty file is not allowed")
-    if len(data) > 25 * 1024 * 1024:
-        raise HTTPException(413, "File exceeds the 25 MB prototype upload limit.")
+    if len(data) > 50 * 1024 * 1024:
+        raise HTTPException(413, "File exceeds the 50 MB prototype upload limit.")
 
     latest = db.scalar(
         select(DocumentVersion)
@@ -607,6 +680,8 @@ async def create_document_version(
         .order_by(DocumentVersion.version.desc())
     )
     sha = hashlib.sha256(data).hexdigest()
+    extracted, extraction_method = extract_text(file.filename, data)
+    ai_classification, ai_confidence, ai_matches = classify_document(doc.title, doc.document_type, extracted)
     if latest and latest.sha256 == sha:
         raise HTTPException(409, "No new version created: the submitted file is identical to the current registered evidence version.")
     next_version = (latest.version if latest else 0) + 1
@@ -634,6 +709,11 @@ async def create_document_version(
         )
         db.add(version)
         doc.current_version = next_version
+        doc.extracted_text = extracted
+        doc.ai_classification = ai_classification
+        doc.ai_confidence = ai_confidence
+        doc.extraction_method = extraction_method
+        doc.redaction_count = 0
         db.commit()
         db.refresh(version)
     except Exception as exc:
@@ -655,9 +735,94 @@ async def create_document_version(
             "version": next_version,
             "sha256": sha,
             "previous_version": latest.version if latest else None,
+            "ai_classification": ai_classification,
+            "ai_confidence": ai_confidence,
+            "extraction_method": extraction_method,
+            "classification_matches": ai_matches,
         }),
     )
     return version
+
+@app.get("/api/documents/{document_id}/intelligence")
+def document_intelligence(document_id:int, db:Session=Depends(get_db), user:User=Depends(require_permission(Permission.DOCUMENT_INTELLIGENCE))):
+    doc=require_document_access(db,user,document_id)
+    return intelligence_payload(db,doc)
+
+@app.post("/api/documents/{document_id}/redact")
+def redact_document(document_id:int, db:Session=Depends(get_db), user:User=Depends(require_permission(Permission.DOCUMENT_REDACT))):
+    doc=require_document_access(db,user,document_id)
+    version=db.scalar(select(DocumentVersion).where(DocumentVersion.document_id==document_id, DocumentVersion.version==doc.current_version))
+    if not version: raise HTTPException(404,"Document has no current version")
+    try: data=get_bytes(version.object_key)
+    except Exception as exc: raise HTTPException(503,"Evidence storage unavailable") from exc
+    text_value=doc.extracted_text or ""
+    if not text_value:
+        text_value,_=extract_text(version.original_filename,data)
+    redacted, findings=redact_text(text_value)
+    if not findings:
+        return {"document_id":doc.id,"version":version.version,"count":0,"findings":[],"message":"No supported PII patterns were detected."}
+    key=f"cases/{doc.case.case_number}/documents/{doc.id}/redacted/v{version.version}.txt"
+    put_bytes(key, redacted.encode("utf-8"), "text/plain; charset=utf-8")
+    db.execute(text("""INSERT INTO document_redactions(document_id,version,created_by,object_key,findings)
+        VALUES(:d,:v,:u,:k,:f) ON CONFLICT(document_id,version) DO UPDATE SET created_by=:u,created_at=NOW(),object_key=:k,findings=:f"""),
+        {"d":doc.id,"v":version.version,"u":user.id,"k":key,"f":json.dumps(findings)})
+    doc.redaction_count=len(findings)
+    db.commit()
+    audit(db,user,"DOCUMENT_REDACT","DOCUMENT",doc.id,"SUCCESS",json.dumps({"version":version.version,"count":len(findings)}))
+    return {"document_id":doc.id,"version":version.version,"count":len(findings),"findings":[{"type":x["type"]} for x in findings],"message":"Redacted copy created; original evidence was not modified."}
+
+@app.get("/api/documents/{document_id}/redacted")
+def download_redacted(document_id:int, db:Session=Depends(get_db), user:User=Depends(require_permission(Permission.DOCUMENT_READ))):
+    doc=require_document_access(db,user,document_id)
+    row=db.execute(text("SELECT * FROM document_redactions WHERE document_id=:d ORDER BY created_at DESC LIMIT 1"),{"d":doc.id}).mappings().first()
+    if not row: raise HTTPException(404,"No redacted copy exists")
+    data=get_bytes(row["object_key"])
+    audit(db,user,"DOCUMENT_REDACTED_DOWNLOAD","DOCUMENT",doc.id,"SUCCESS",json.dumps({"version":row["version"]}))
+    return Response(content=data,media_type="text/plain",headers={"Content-Disposition":f'attachment; filename="{doc.document_number}-redacted-v{row["version"]}.txt"'})
+
+@app.post("/api/documents/{document_id}/seal")
+def seal_document(document_id:int, body:dict, db:Session=Depends(get_db), user:User=Depends(require_permission(Permission.DOCUMENT_SEAL))):
+    doc=require_document_access(db,user,document_id,write=True)
+    ensure_document_mutable(db,doc,"EVIDENCE_SEAL")
+    version=int(body.get("version") or doc.current_version)
+    if version!=doc.current_version: raise HTTPException(400,"Only the current version can be sealed.")
+    v=db.scalar(select(DocumentVersion).where(DocumentVersion.document_id==doc.id,DocumentVersion.version==version))
+    if not v: raise HTTPException(404,"Evidence version not found")
+    doc.sealed=True; doc.sealed_version=version; doc.sealed_at=datetime.now(timezone.utc); doc.sealed_by=user.id
+    db.commit(); audit(db,user,"EVIDENCE_SEAL","DOCUMENT",doc.id,"SUCCESS",json.dumps({"version":version}))
+    return {"ok":True,"sealed":True,"version":version,"sealed_at":doc.sealed_at}
+
+@app.post("/api/documents/{document_id}/tamper-demo")
+def tamper_demo(document_id:int, db:Session=Depends(get_db), user:User=Depends(require_permission(Permission.DOCUMENT_TAMPER_DEMO))):
+    doc=require_document_access(db,user,document_id,write=True); ensure_document_mutable(db,doc,"TAMPER_DEMO")
+    v=db.scalar(select(DocumentVersion).where(DocumentVersion.document_id==doc.id,DocumentVersion.version==doc.current_version))
+    if not v: raise HTTPException(404,"Evidence version not found")
+    data=get_bytes(v.object_key)
+    mutated=data + b"\nKAIRO-TAMPER-DEMO-MUTATION\n"
+    put_bytes(v.object_key,mutated,v.content_type)
+    audit(db,user,"TAMPER_DEMO","DOCUMENT",doc.id,"SUCCESS",json.dumps({"version":v.version,"registered_sha256":v.sha256,"demo_only":True}))
+    return {"ok":True,"version":v.version,"message":"Demo mutation injected without changing the registered SHA-256."}
+
+@app.post("/api/documents/{document_id}/restore/{version_number}")
+def restore_version(document_id:int,version_number:int,db:Session=Depends(get_db),user:User=Depends(require_permission(Permission.DOCUMENT_VERSION_CREATE))):
+    doc=require_document_access(db,user,document_id,write=True); ensure_document_mutable(db,doc,"VERSION_RESTORE")
+    source=db.scalar(select(DocumentVersion).where(DocumentVersion.document_id==doc.id,DocumentVersion.version==version_number))
+    if not source: raise HTTPException(404,"Historical version not found")
+    data=get_bytes(source.object_key)
+    sha=hashlib.sha256(data).hexdigest()
+    if sha!=source.sha256: raise HTTPException(409,"Cannot restore a historical version that fails integrity verification.")
+    latest=db.scalar(select(DocumentVersion).where(DocumentVersion.document_id==doc.id).order_by(DocumentVersion.version.desc()))
+    if latest and latest.sha256 == sha:
+        raise HTTPException(409,"The selected historical version is already the current registered content.")
+    next_version=(latest.version if latest else 0)+1
+    case=db.get(Case,doc.case_id)
+    key=f"cases/{case.case_number}/documents/{doc.id}/v{next_version}/restored-{safe_filename(source.original_filename)}"
+    put_bytes(key,data,source.content_type)
+    extracted,method=extract_text(source.original_filename,data); ai,conf,matches=classify_document(doc.title,doc.document_type,extracted)
+    db.add(DocumentVersion(document_id=doc.id,version=next_version,object_key=key,original_filename=f"restored-{safe_filename(source.original_filename)}",content_type=source.content_type,size_bytes=len(data),sha256=sha,uploaded_by=user.id))
+    doc.current_version=next_version; doc.extracted_text=extracted; doc.ai_classification=ai; doc.ai_confidence=conf; doc.extraction_method=method; doc.redaction_count=0
+    db.commit(); audit(db,user,"VERSION_RESTORE","DOCUMENT",doc.id,"SUCCESS",json.dumps({"source_version":version_number,"version":next_version,"sha256":sha,"classification_matches":matches}))
+    return {"ok":True,"version":next_version,"restored_from":version_number,"sha256":sha,"ai_classification":ai,"ai_confidence":conf}
 
 @app.post("/api/documents/{document_id}/verify")
 def verify_document(
@@ -1012,6 +1177,30 @@ def dispositions(db: Session = Depends(get_db), user: User = Depends(require_per
             result.append({**dict(r), **allowed[r["document_id"]]})
     return result
 
+@app.delete("/api/documents/{document_id}")
+def delete_document(document_id:int, db:Session=Depends(get_db), user:User=Depends(require_permission(Permission.DOCUMENT_DELETE))):
+    doc=require_document_access(db,user,document_id,write=True)
+    ensure_document_mutable(db,doc,"DOCUMENT_DELETE")
+    if user.role!="ADMIN":
+        policy=db.execute(text("SELECT retain_until FROM retention_policies WHERE document_id=:d"),{"d":doc.id}).scalar()
+        if policy and policy > datetime.now(timezone.utc):
+            raise HTTPException(423,"Retention policy is active. Document deletion is blocked until the retention date.")
+    versions=list(db.scalars(select(DocumentVersion).where(DocumentVersion.document_id==doc.id)))
+    for v in versions:
+        try: delete_bytes(v.object_key)
+        except Exception: pass
+    try:
+        redacted=db.execute(text("SELECT object_key FROM document_redactions WHERE document_id=:d"),{"d":doc.id}).mappings().all()
+        for r in redacted:
+            try: delete_bytes(r["object_key"])
+            except Exception: pass
+        db.execute(text("DELETE FROM document_redactions WHERE document_id=:d"),{"d":doc.id})
+        db.delete(doc); db.commit()
+    except Exception as exc:
+        db.rollback(); raise HTTPException(500,"Document deletion failed; metadata transaction was rolled back.") from exc
+    audit(db,user,"DOCUMENT_DELETE","DOCUMENT",document_id,"SUCCESS",json.dumps({"versions_deleted":len(versions)}))
+    return {"ok":True,"document_id":document_id,"deleted_versions":len(versions)}
+
 @app.get("/api/documents/{document_id}/forensic-export")
 def forensic_export(
     document_id: int,
@@ -1055,7 +1244,7 @@ def forensic_export(
 @app.get("/api/security/posture")
 def security_posture(user: User = Depends(current_user)):
     return {
-        "authentication":"JWT (with revocable sessions)","authorization":"RBAC","storage":"MinIO + PostgreSQL metadata","integrity":"SHA-256","custody":"Authorized lifecycle events","trust_ledger":"SHA-256 chained audit events","blockchain":blockchain_status(),"digital_signatures":"RSA-PSS-SHA256","sharing":"Authenticated account-bound, expiring, revocable","governance":"Retention + legal hold","upload_limit_mb":25,"response_hardening":["X-Content-Type-Options","X-Frame-Options","Referrer-Policy","no-store"],"login_rate_limit":{"window_seconds":_LOGIN_WINDOW,"max_attempts":_LOGIN_MAX_ATTEMPTS}
+        "authentication":"JWT (with revocable sessions)","authorization":"RBAC","storage":"MinIO + PostgreSQL metadata","integrity":"SHA-256","custody":"Authorized lifecycle events","trust_ledger":"SHA-256 chained audit events","blockchain":blockchain_status(),"digital_signatures":"RSA-PSS-SHA256","sharing":"Authenticated account-bound, expiring, revocable","governance":"Retention + legal hold","upload_limit_mb":50,"document_intelligence":"text extraction + assisted classification + PII redaction","response_hardening":["X-Content-Type-Options","X-Frame-Options","Referrer-Policy","no-store"],"login_rate_limit":{"window_seconds":_LOGIN_WINDOW,"max_attempts":_LOGIN_MAX_ATTEMPTS}
     }
 
 @app.get(

@@ -28,6 +28,9 @@ Case -> Authorized Members
 Everything important -> Audit Event
 Important integrity events -> Hyperledger Fabric ledger record
 
+## UI boundary
+The operational workspace is intentionally separate from demonstration/proof tooling. Day-to-day users see cases, evidence, verification, intelligence, collaboration, governance and audit functions. Controlled integrity testing and live Hyperledger Fabric transaction monitoring are separate proof consoles and are not presented as normal evidence-handling screens.
+
 ## V1 non-negotiables
 Real PostgreSQL, real object storage, real authentication/authorization, real cryptographic verification, real Hyperledger Fabric integration, real audit persistence, real attack/test clients against the user's own deployment.
 

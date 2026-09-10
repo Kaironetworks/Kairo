@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, DateTime, ForeignKey, Integer, Boolean, UniqueConstraint
+from sqlalchemy import String, Text, DateTime, ForeignKey, Integer, Boolean, UniqueConstraint, Float
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .db import Base
 
@@ -46,6 +46,17 @@ class Document(Base):
     title: Mapped[str] = mapped_column(String(255))
     document_type: Mapped[str] = mapped_column(String(80))
     classification: Mapped[str] = mapped_column(String(50), default="RESTRICTED")
+    description: Mapped[str] = mapped_column(Text, default="")
+    access_roles: Mapped[str] = mapped_column(Text, default="[]")
+    extracted_text: Mapped[str] = mapped_column(Text, default="")
+    ai_classification: Mapped[str] = mapped_column(String(80), default="")
+    ai_confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    extraction_method: Mapped[str] = mapped_column(String(40), default="NONE")
+    redaction_count: Mapped[int] = mapped_column(Integer, default=0)
+    sealed: Mapped[bool] = mapped_column(Boolean, default=False)
+    sealed_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sealed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sealed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     current_version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     case = relationship("Case", back_populates="documents")

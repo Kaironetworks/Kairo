@@ -98,6 +98,13 @@ export const api = {
     return request(`/api/documents/${docId}/versions`,{method:"POST",body:f});
   },
   verify: docId=>request(`/api/documents/${docId}/verify`,{method:"POST"}),
+  intelligence: docId=>request(`/api/documents/${docId}/intelligence`),
+  redact: docId=>request(`/api/documents/${docId}/redact`,{method:"POST"}),
+  redacted: async docId=>(await blobRequest(`/api/documents/${docId}/redacted`)).blob,
+  seal: (docId,version)=>request(`/api/documents/${docId}/seal`,{method:"POST",body:JSON.stringify({version})}),
+  tamperDemo: docId=>request(`/api/documents/${docId}/tamper-demo`,{method:"POST"}),
+  deleteDocument: docId=>request(`/api/documents/${docId}`,{method:"DELETE"}),
+  restore: (docId,version)=>request(`/api/documents/${docId}/restore/${version}`,{method:"POST"}),
   download: async docId=>(await blobRequest(`/api/documents/${docId}/download`)).blob,
   downloadVersion: async (docId,version)=>{
     const {res,blob}=await blobRequest(`/api/documents/${docId}/versions/${version}/download`);

@@ -3,7 +3,7 @@ import {
  ShieldCheck,LockKeyhole,ArrowRight,Activity,Database,FileCheck2,Fingerprint,
  Search,LogOut,Menu,X,ChevronRight,RefreshCw,CircleCheck,AlertTriangle,
  Eye,UploadCloud,History,ShieldAlert,UserRound,KeyRound,Server,Plus,
- ExternalLink,Clock3,Blocks,Link2,CheckCircle2,FileArchive
+ ExternalLink,Clock3,Blocks,Link2,CheckCircle2,FileArchive,ScanText,BrainCircuit,FileLock2,RotateCcw,FileWarning
 } from "lucide-react";
 import {api} from "./api";
 
@@ -43,8 +43,8 @@ function Shell({user,page,setPage,onLogout,children}){
   ["cases","Investigations",Search],
   ["search","Evidence",Search],
   ["integrity","Verification",Fingerprint],
+  ["intelligence","Intelligence",BrainCircuit],
   ["trust","Trust ledger",Blocks],
-  ["security","Security",ShieldAlert],
   ["incidents","Incidents",AlertTriangle],
   ...(user.role!=="AUDITOR"?[["sharing","Secure sharing",ExternalLink],["signatures","Signatures",KeyRound],["forensics","Forensic export",FileArchive]]:[]),
   ["governance","Governance",LockKeyhole],
@@ -152,7 +152,7 @@ function UploadModal({caseId,onClose,onDone}){
  const submit=async e=>{e.preventDefault();setError("");
    if(!title.trim())return setError("Document title is required.");
    if(!file)return setError("Select an evidence file.");
-   if(file.size>25*1024*1024)return setError("File exceeds the 25 MB upload limit.");
+   if(file.size>25*1024*1024)return setError("File exceeds the 50 MB upload limit.");
    setBusy(true);
    try{await api.upload(caseId,file,{title:title.trim(),document_type:type,classification});onDone()}
    catch(err){setError(err.message||"Evidence upload failed.")}
@@ -165,7 +165,7 @@ function UploadModal({caseId,onClose,onDone}){
    <label>Document type<select value={type} onChange={e=>setType(e.target.value)}><option>FIR</option><option>EVIDENCE</option><option>FORENSIC_REPORT</option><option>WITNESS_STATEMENT</option><option>CHARGE_SHEET</option></select></label>
    <label>Classification<select value={classification} onChange={e=>setClassification(e.target.value)}><option>RESTRICTED</option><option>CONFIDENTIAL</option><option>HIGHLY_RESTRICTED</option></select></label>
   </div>
-  <label className="dropzone"><UploadCloud size={26}/><b>{file?file.name:"Choose evidence file"}</b><span>{file?`${(file.size/1024/1024).toFixed(2)} MB · ready to secure`:"PDF, DOCX, images or other case material · max 25 MB"}</span><input type="file" onChange={e=>setFile(e.target.files?.[0]||null)}/></label>
+  <label className="dropzone"><UploadCloud size={26}/><b>{file?file.name:"Choose evidence file"}</b><span>{file?`${(file.size/1024/1024).toFixed(2)} MB · ready to secure`:"PDF, DOCX, images or other case material · max 50 MB"}</span><input type="file" onChange={e=>setFile(e.target.files?.[0]||null)}/></label>
   {error&&<div className="error"><AlertTriangle size={15}/>{error}</div>}
   <div className="modal-actions"><button type="button" className="secondary" onClick={onClose} disabled={busy}>Cancel</button><button className="primary" disabled={busy}>{busy?"Securing evidence…":"Secure document"}<ArrowRight size={16}/></button></div>
  </form></div>
@@ -173,7 +173,7 @@ function UploadModal({caseId,onClose,onDone}){
 
 function Integrity(){
  const [doc,setDoc]=useState(""),[selected,setSelected]=useState(null),[result,setResult]=useState(null);
- async function verify(){if(!selected)return;setResult({busy:true});try{setResult(await api.verify(selected.id))}catch(e){setResult({error:e.message})}}
+ async function verify(){if(!selected)return;setResult({busy:true});try{setResult(await api.verify(Number(selected.document_id ?? selected.id ?? doc))) }catch(e){setResult({error:e.message})}}
  useEffect(()=>{
    if(!doc){setSelected(null);setResult(null);return}
    api.search("",{limit:100}).then(found=>{setSelected(found.find(x=>Number(x.document_id)===Number(doc))||{id:Number(doc),document_number:`KAIRO-DOC-${String(doc).padStart(5,"0")}`});setResult(null)}).catch(e=>setResult({error:e.message}));
@@ -187,39 +187,160 @@ function Integrity(){
  {result&&!result.error&&!result.busy&&<div className={result.verified?"verify-good":"verify-bad"}>{result.verified?<CircleCheck/>:<AlertTriangle/>}<div><b>{result.result}</b><span>{result.verified?"The current object matches the recorded fingerprint.":"The object differs from the recorded fingerprint — an integrity incident is present."}</span><code>expected {result.expected_sha256}<br/>observed&nbsp; {result.observed_sha256}</code></div></div>}{result?.error&&<div className="error">{result.error}</div>}</section>}
  </>}
 
-function TrustLedger(){
- const [data,setData]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(""),[fabric,setFabric]=useState(null),[doc,setDoc]=useState(""),[anchor,setAnchor]=useState(null);
- async function load(){try{setError("");const [ledger,bc]=await Promise.all([api.trustLedger(80),api.blockchainStatus()]);setData(ledger);setFabric(bc)}catch(e){setError(e.message)}}
+function Intelligence({user}){
+ const [doc,setDoc]=useState(""),[data,setData]=useState(null),[msg,setMsg]=useState(""),[busy,setBusy]=useState(false);
+ async function load(id=doc){
+  if(!id){setData(null);return}
+  try{setMsg("");setData(await api.intelligence(Number(id)))}catch(e){setMsg(e.message)}
+ }
+ useEffect(()=>{load()},[doc]);
+ async function act(fn,success){
+  setBusy(true);setMsg("");
+  try{const r=await fn();setMsg(success(r));await load()}
+  catch(e){setMsg(e.message)}
+  finally{setBusy(false)}
+ }
+ async function detectRedactions(){
+  await act(()=>api.redact(Number(doc)),r=>r.message||`Redacted ${r.count} finding(s).`)
+ }
+ async function sealCurrent(){
+  if(!window.confirm("Seal the current evidence version? Further modification will be blocked."))return;
+  await act(()=>api.seal(Number(doc),data.current_version),()=>"Evidence sealed. Further modification is blocked.")
+ }
+ async function restoreVersion(version){
+  if(!window.confirm(`Restore version ${version} as a new current version?`))return;
+  await act(()=>api.restore(Number(doc),version),r=>`Version ${r.version} created from historical version ${r.restored_from}.`)
+ }
+ async function downloadRedacted(){
+  try{
+   const b=await api.redacted(Number(doc));
+   const u=URL.createObjectURL(b);
+   const a=document.createElement("a");
+   a.href=u;
+   a.download=`${data.document_number}-redacted.txt`;
+   a.click();
+   setTimeout(()=>URL.revokeObjectURL(u),1000)
+  }catch(e){setMsg(e.message)}
+ }
+ return <>
+  <PageTitle eyebrow="DOCUMENT INTELLIGENCE" title="Intelligence console" desc="Extract searchable text, assist document classification, detect supported PII patterns and preserve a separate redacted copy — without modifying the original evidence bytes." action={<button className="secondary" onClick={()=>load()} disabled={!doc||busy}><RefreshCw size={15}/>Refresh</button>}/>
+  {msg&&<div className="notice banner">{msg}</div>}
+  <section className="panel">
+   <PanelHead title="Select evidence"/>
+   <div className="toolbar"><DocumentPicker value={doc} onChange={v=>{setDoc(v);setData(null)}}/></div>
+  </section>
+  {data&&<>
+   <div className="stats">
+    <Stat Icon={BrainCircuit} label="Classification" value={data.ai_classification||data.document_type} detail={`${Math.round((data.ai_confidence||0)*100)}% assisted confidence`}/>
+    <Stat Icon={ScanText} label="Extraction" value={data.extraction_method} detail={`${(data.extracted_text||"").length.toLocaleString()} characters`}/>
+    <Stat Icon={FileWarning} label="PII findings" value={data.redaction_count} detail="latest scan count"/>
+    <Stat Icon={FileLock2} label="Evidence state" value={data.sealed?"SEALED":"MUTABLE"} detail={`Merkle ${data.merkle_root?.slice(0,12)}…`}/>
+   </div>
+   <section className="panel">
+    <PanelHead title="Intelligence result" action={<span className="panel-meta">Original evidence is immutable</span>}/>
+    <div className="inspect-grid">
+     <div><span>DOCUMENT</span><b>{data.document_number}</b></div>
+     <div><span>TYPE</span><b>{data.document_type}</b></div>
+     <div><span>CLASSIFICATION</span><b>{data.classification}</b></div>
+     <div><span>VERSION</span><b>v{data.current_version}</b></div>
+    </div>
+    <div className="grid-2">
+     <div className="governance-card"><div className="eyebrow">EXTRACTED CONTENT</div><p className="extracted-preview">{data.extracted_text_preview||"No text could be extracted. Install the optional OCR/PDF dependencies and, for image OCR, the Tesseract engine."}</p></div>
+     <div className="governance-card"><div className="eyebrow">TRUST SUMMARY</div><p>Merkle root: <code>{data.merkle_root}</code></p><p>Redactions: <b>{data.redaction_count}</b> finding(s). Sealed: <b>{data.sealed?"YES":"NO"}</b>.</p></div>
+    </div>
+   </section>
+   <section className="panel">
+    <PanelHead title="Evidence controls"/>
+    <div className="actions">
+     {user.role!=="AUDITOR"&&<>
+      <button className="secondary" disabled={busy} onClick={detectRedactions}><ScanText size={15}/>Detect &amp; redact</button>
+      {data.redaction_count>0&&<button className="secondary" disabled={busy} onClick={downloadRedacted}>Download redacted copy</button>}
+      {!data.sealed&&<button className="secondary" disabled={busy} onClick={sealCurrent}><FileLock2 size={15}/>Seal current version</button>}
+      {!data.sealed&&<button className="secondary" disabled={busy} onClick={runTamperDemo}><FileWarning size={15}/>Tamper demo</button>}
+     </>}
+    </div>
+   </section>
+   <section className="panel">
+    <PanelHead title="Immutable versions" action={<span className="panel-meta">Restore creates a new version</span>}/>
+    {data.versions.map(v=><div className="version-row" key={v.version}>
+     <History size={15}/>
+     <div><b>Version {v.version}</b><span>{v.filename} · {new Date(v.created_at).toLocaleString()}</span></div>
+     <code>{v.sha256.slice(0,18)}…</code>
+     {v.version!==data.current_version&&!data.sealed&&<button className="secondary" disabled={busy} onClick={()=>restoreVersion(v.version)}><RotateCcw size={14}/>Restore</button>}
+    </div>)}
+   </section>
+   <div className="trust-strip"><BrainCircuit/><div><b>Assistive, not authoritative</b><span>Classification and extraction are local deterministic/optional-OCR helpers for triage and search. Security, authorization, hashes, versioning and evidence custody remain enforced by KAIRO's server.</span></div></div>
+  </>}
+ </>
+}
+
+function TrustLedger({onProof}){
+ const [data,setData]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState("");
+ async function load(){try{setError("");const ledger=await api.trustLedger(80);setData(ledger)}catch(e){setError(e.message)}}
  async function verify(){setBusy(true);try{const r=await api.trustVerify();setData(d=>d?{...d,status:r}:d);await load()}catch(e){setError(e.message)}finally{setBusy(false)}}
- async function anchorNow(){if(!doc)return setError("Select evidence first.");setBusy(true);setError("");setAnchor(null);try{const r=await api.blockchainAnchor(Number(doc));setAnchor(r);await load()}catch(e){setError(e.message)}finally{setBusy(false)}}
  useEffect(()=>{load()},[]);
  const status=data?.status;
- return <><PageTitle eyebrow="INDEPENDENT TRUST ANCHOR" title="Trust ledger" desc="A cryptographically chained record of KAIRO security events, with optional permissioned Hyperledger Fabric anchoring for independently verifiable evidence proof." action={<button className="secondary" onClick={load}><RefreshCw size={15}/>Refresh</button>}/>
+ return <><PageTitle eyebrow="INDEPENDENT TRUST ANCHOR" title="Trust ledger" desc="Operational trust history for evidence events. Detailed live Fabric transaction monitoring is separated into a dedicated proof console." action={<div className="actions"><button className="secondary" onClick={onProof}>Open live blockchain proof</button><button className="secondary" onClick={load}><RefreshCw size={15}/>Refresh</button></div>}/>
  {error&&<div className="error banner">{error}</div>}
  <div className="ledger-hero"><div className={"ledger-seal "+(status?.verified===false?"bad":"")}><Blocks size={34}/></div><div className="ledger-copy"><div className="eyebrow">KAIRO TRUST CHAIN</div><h2>{status?.verified===false?"LEDGER INTEGRITY FAILED":status?"LEDGER VERIFIED":"Loading trust state…"}</h2><p>{status?`${status.blocks} blocks linked by SHA-256 event hashes. Every block points to the previous block.`:"Building independent trust state."}</p></div><button className="primary" onClick={verify} disabled={busy||!data}>{busy?"Working…":"Verify ledger chain"}<CheckCircle2 size={16}/></button></div>
- <div className="stats ledger-stats"><Stat Icon={Blocks} label="Blocks" value={status?.blocks??"—"} detail="anchored events"/><Stat Icon={Link2} label="Latest index" value={status?.latest_block??"—"} detail="latest recorded block"/><Stat Icon={Fingerprint} label="Hashing" value="SHA-256" detail="event fingerprints"/><Stat Icon={Server} label="Fabric" value={fabric?.reachable?"CONNECTED":"OFFLINE"} detail={fabric?.blockchain||"permissioned anchor"}/></div>
- <section className="panel"><PanelHead title="Hyperledger Fabric anchor" action={<span className="panel-meta">Evidence bytes remain off-chain</span>}/><div className="toolbar"><DocumentPicker value={doc} onChange={setDoc}/><button className="primary" disabled={busy||!doc||!fabric?.reachable} onClick={anchorNow}>{busy?"Anchoring…":"Anchor current version"}<Link2 size={15}/></button></div>{fabric&&!fabric.reachable&&<div className="notice banner">Fabric gateway is not reachable. Start the Fabric network and gateway to enable a real ledger transaction.</div>}{anchor&&<div className="notice banner">Fabric transaction confirmed: <code>{anchor.fabric?.txId||anchor.fabric?.tx_id||"transaction returned"}</code></div>}<p className="muted">The anchor contains the evidence SHA-256, custody digest, actor and action. A successful operation must return a Fabric transaction ID; otherwise KAIRO reports the anchor as unavailable.</p></section>
+ <div className="stats ledger-stats"><Stat Icon={Blocks} label="Blocks" value={status?.blocks??"—"} detail="recorded trust events"/><Stat Icon={Link2} label="Latest index" value={status?.latest_block??"—"} detail="latest ledger block"/><Stat Icon={Fingerprint} label="Hashing" value="SHA-256" detail="event fingerprints"/><Stat Icon={ShieldCheck} label="Integrity" value={status?.verified===false?"FAILED":"VERIFIED"} detail="local trust chain"/></div>
  <section className="panel"><PanelHead title="Immutable trust sequence" action={<span className="panel-meta">Newest first</span>}/>{data?.blocks?.length?data.blocks.map(b=><div className="ledger-row" key={b.block_index}><div className="block-number">#{b.block_index}</div><div className="ledger-main"><b>{b.action.replaceAll("_"," ")}</b><span>{b.target_type} · {b.target_id} · {b.result}</span><code>tx {b.transaction_id.slice(0,20)}…</code></div><div className="hash-pair"><span>EVENT</span><code>{b.event_hash.slice(0,18)}…</code><span>PREVIOUS</span><code>{b.previous_hash.slice(0,18)}…</code></div><CheckCircle2 size={17}/></div>):<Empty>Loading trust ledger…</Empty>}</section>
  <div className="trust-strip"><Blocks/><div><b>Two trust layers</b><span>KAIRO's local chain detects audit-history changes; Hyperledger Fabric provides an independent permissioned ledger anchor for selected evidence proofs.</span></div></div></>
 }
 
-function Incidents({user}){
+function Incidents({user,onValidation}){
  const [items,setItems]=useState([]),[loading,setLoading]=useState(true),[filter,setFilter]=useState("OPEN"),[busy,setBusy]=useState(null),[msg,setMsg]=useState("");
  async function load(){setLoading(true);setMsg("");try{setItems(await api.incidents(filter))}catch(e){setMsg(e.message)}finally{setLoading(false)}}
  useEffect(()=>{load()},[filter]);
  async function resolve(id){const resolution=window.prompt("Resolution / analyst action:","Evidence restored from controlled backup after incident investigation.");if(!resolution)return;setBusy(id);try{await api.resolveIncident(id,resolution);await load()}catch(e){setMsg(e.message)}finally{setBusy(null)}}
- return <><PageTitle eyebrow="INCIDENT RESPONSE" title="Security incidents" desc="KAIRO separates a legitimate authorized evidence change from a later modification that has no corresponding authorized custody event." action={<div className="actions"><select className="select" value={filter} onChange={e=>setFilter(e.target.value)}><option value="OPEN">Open incidents</option><option value="RESOLVED">Resolved incidents</option><option value="">All incidents</option></select><button className="secondary" onClick={load}><RefreshCw size={15}/>Refresh</button></div>}/>
+ return <><PageTitle eyebrow="INCIDENT RESPONSE" title="Security incidents" desc="KAIRO separates a legitimate authorized evidence change from a later modification that has no corresponding authorized custody event." action={<div className="actions"><button className="secondary" onClick={onValidation}><ShieldAlert size={15}/>Open validation console</button><select className="select" value={filter} onChange={e=>setFilter(e.target.value)}><option value="OPEN">Open incidents</option><option value="RESOLVED">Resolved incidents</option><option value="">All incidents</option></select><button className="secondary" onClick={load}><RefreshCw size={15}/>Refresh</button></div>}/>
  {msg&&<div className="error banner">{msg}</div>}
  {loading?<div className="loading">Loading incident register…</div>:items.length?items.map(i=><section className="panel incident-card" key={i.id}><div className="incident-top"><div><span className="eyebrow">INCIDENT #{i.id}</span><h3>{i.incident_type.replaceAll("_"," ")}</h3></div><span className={"pill "+(i.status==="OPEN"?"danger":"success")}>{i.status}</span></div><div className="incident-grid"><div><span>DOCUMENT</span><b>KAIRO-DOC-{String(i.document_id).padStart(5,"0")}</b></div><div><span>VERSION</span><b>V{i.version}</b></div><div><span>SEVERITY</span><b>{i.severity}</b></div><div><span>DETECTED BY</span><b>Authenticated KAIRO user #{i.detected_by??"—"}</b></div></div><p className="incident-explain">{i.explanation}</p><div className="hash-pair"><div><span>REGISTERED SHA-256</span><code>{i.expected_sha256}</code></div><div><span>OBSERVED SHA-256</span><code>{i.observed_sha256}</code></div></div>{i.status==="OPEN"&&<div className="incident-actions"><span><ShieldAlert size={15}/> Do not treat the detector as proof of attacker identity.</span>{user?.role!=="AUDITOR"&&<button className="primary" disabled={busy===i.id} onClick={()=>resolve(i.id)}>{busy===i.id?"Resolving…":"Record resolution"}</button>}</div>}{i.status==="RESOLVED"&&<div className="resolved-note">Resolution: {i.resolution}</div>}</section>):<div className="empty">No incidents in this view.</div>}
  </>
 }
 
-function Security({user}){
- return <><PageTitle eyebrow="SECURITY OPERATIONS" title="Security lab" desc="See the difference between an authorized evidence change and an unauthorized modification of stored bytes."/>
- <div className="grid-2"><section className="panel security-card"><div className="security-icon"><UserRound/></div><div className="eyebrow">AUTHORIZED CHANGE</div><h2>Identity → permission → custody event.</h2><p>Your current account is <b>{roleLabel(user.role)}</b>. When you create a version through KAIRO, the API checks your role before writing the new evidence version.</p><div className="security-flow"><span>ACCOUNT</span><b>{roleLabel(user.role)}</b><ArrowRight/><span>RBAC</span><b>ALLOW</b><ArrowRight/><span>RECORD</span><b>WHO + WHAT + WHEN</b></div><div className="notice">The version is legitimate in KAIRO's workflow because an authenticated account with the required permission performed the protected action.</div></section>
- <section className="panel security-card"><div className="security-icon"><ShieldAlert/></div><div className="eyebrow">UNAUTHORIZED MODIFICATION</div><h2>Changed bytes without a new authorized version.</h2><p>If the stored object changes outside the version-creation workflow, its bytes produce a different SHA-256 while the registered version fingerprint stays unchanged.</p><div className="security-flow"><span>STORAGE</span><b>MINIO</b><ArrowRight/><span>HASH</span><b>MISMATCH</b><ArrowRight/><span>CUSTODY</span><b>INCIDENT</b></div><div className="notice">KAIRO does not magically identify the attacker. It proves that the current bytes changed and that no authorized version event explains that change.</div></section></div>
- <div className="trust-strip"><ShieldCheck/><div><b>The evidence decision rule</b><span>Authorized account + required permission + recorded version event + matching SHA-256 = controlled evidence. Hash mismatch without a corresponding authorized version event = integrity incident.</span></div></div></>
+function Security({user,onBack}){
+ const [doc,setDoc]=useState(""),[busy,setBusy]=useState(false),[msg,setMsg]=useState("");
+ async function run(){
+  if(!doc)return setMsg("Select a demo evidence document first.");
+  if(!window.confirm("This demonstration modifies only the selected demo evidence object. Continue?"))return;
+  setBusy(true);setMsg("");
+  try{const r=await api.tamperDemo(Number(doc));setMsg(r.message||"Controlled integrity-validation mutation completed. Run Verification next.")}
+  catch(e){setMsg(e.message)}finally{setBusy(false)}
+ }
+ return <><PageTitle eyebrow="DEMONSTRATION / VALIDATION" title="Integrity validation console" desc="A controlled demonstration surface for proving how KAIRO detects an unauthorized change. This is intentionally separate from the operational evidence workspace." action={<button className="secondary" onClick={onBack}>Back to incidents</button>}/>
+ {msg&&<div className="notice banner">{msg}</div>}
+ <section className="panel"><PanelHead title="Select demonstration evidence"/><div className="toolbar"><DocumentPicker value={doc} onChange={setDoc}/><button className="primary" disabled={busy||!doc} onClick={run}>{busy?"Running validation…":"Run controlled integrity test"}<ShieldAlert size={16}/></button></div></section>
+ <div className="grid-2"><section className="panel security-card"><div className="security-icon"><UserRound/></div><div className="eyebrow">CONTROLLED TEST</div><h2>Authorized workflow remains the product.</h2><p>Your operational workspace creates versions only after authentication, RBAC and case-scope checks. This console exists only to validate the detector against a controlled demonstration object.</p><div className="security-flow"><span>IDENTITY</span><b>{roleLabel(user.role)}</b><ArrowRight/><span>RBAC</span><b>ENFORCED</b><ArrowRight/><span>CUSTODY</span><b>RECORDED</b></div></section>
+ <section className="panel security-card"><div className="security-icon"><ShieldAlert/></div><div className="eyebrow">INTEGRITY TEST</div><h2>Stored bytes → hash mismatch → incident.</h2><p>The test changes the demo object's stored bytes without creating a new authorized version. Verification should then fail and the incident register should receive a traceable event.</p><div className="security-flow"><span>MINIO</span><b>CHANGE</b><ArrowRight/><span>SHA-256</span><b>MISMATCH</b><ArrowRight/><span>RESPONSE</span><b>INCIDENT</b></div></section></div>
+ <div className="trust-strip"><ShieldCheck/><div><b>Scope boundary</b><span>This page is not an operational security dashboard and is not required for day-to-day evidence handling. It is a controlled proof surface for demonstrations, QA and investigator training.</span></div></div></>
 }
+
+function BlockchainProof({onBack}){
+ const [status,setStatus]=useState(null),[doc,setDoc]=useState(""),[logs,setLogs]=useState([]),[busy,setBusy]=useState(false),[error,setError]=useState("");
+ const addLog=(text,type="info")=>setLogs(l=>[{id:Date.now()+Math.random(),time:new Date().toLocaleTimeString(),text,type},...l].slice(0,40));
+ async function poll(initial=false){
+  try{const s=await api.blockchainStatus();setStatus(s);if(initial)addLog(s.reachable?"Fabric gateway reachable — live transaction path available":"Fabric gateway offline — no blockchain transaction will be claimed",s.reachable?"ok":"warn")}catch(e){setError(e.message);if(initial)addLog("Unable to query Fabric gateway: "+e.message,"error")}
+ }
+ useEffect(()=>{poll(true);const t=setInterval(()=>poll(false),2000);return()=>clearInterval(t)},[]);
+ async function anchor(){
+  if(!doc)return setError("Select evidence first.");
+  setBusy(true);setError("");addLog(`Submitting evidence anchor for document ${doc}…`);
+  try{const r=await api.blockchainAnchor(Number(doc));const tx=r.fabric?.txId||r.fabric?.tx_id||r.txId||r.tx_id;if(!tx)throw new Error("Fabric did not return a transaction ID; anchor not treated as confirmed.");addLog(`Fabric transaction committed: ${tx}`,"ok");addLog(`Evidence hash anchored; document bytes remain off-chain`,"ok");await poll(false)}catch(e){setError(e.message);addLog("Anchor failed: "+e.message,"error")}finally{setBusy(false)}
+ }
+ return <><PageTitle eyebrow="PROOF CONSOLE / HYPERLEDGER FABRIC" title="Live blockchain proof" desc="A dedicated demonstration surface for observing the real permissioned-ledger transaction path. The operational product remains focused on cases, evidence and governance." action={<button className="secondary" onClick={onBack}>Back to trust ledger</button>}/>
+ <section className="terminal-panel"><div className="terminal-head"><div><span className="terminal-dot"/>KAIRO FABRIC GATEWAY</div><span>{status?.reachable?"LIVE":"OFFLINE"}</span></div><div className="terminal-screen">
+   <div className="terminal-command">$ kairo fabric status --watch</div>
+   <div className="terminal-line"><span>[{new Date().toLocaleTimeString()}]</span> gateway: <b>{status?.reachable?"CONNECTED":"WAITING"}</b></div>
+   <div className="terminal-line"><span>channel:</span> {status?.channel||"mychannel"}</div>
+   <div className="terminal-line"><span>chaincode:</span> {status?.chaincode||"kairo-trust"}</div>
+   <div className="terminal-line"><span>network:</span> {status?.blockchain||"hyperledger-fabric"}</div>
+   {logs.map(l=><div className={`terminal-line terminal-${l.type}`} key={l.id}><span>[{l.time}]</span> {l.text}</div>)}
+  </div></section>
+ <section className="panel"><PanelHead title="Anchor a real evidence proof" action={<span className="panel-meta">Only confirmed Fabric TX IDs are displayed</span>}/><div className="toolbar"><DocumentPicker value={doc} onChange={setDoc}/><button className="primary" disabled={!status?.reachable||busy||!doc} onClick={anchor}>{busy?"Submitting transaction…":"Submit Fabric transaction"}<Link2 size={15}/></button></div>{error&&<div className="error banner">{error}</div>}<div className="proof-grid"><div><span>ON-CHAIN</span><b>Document ID + version</b></div><div><span>ON-CHAIN</span><b>SHA-256 + custody digest</b></div><div><span>OFF-CHAIN</span><b>Original evidence bytes</b></div><div><span>PROOF</span><b>Fabric transaction ID</b></div></div></section>
+ <div className="trust-strip"><Blocks/><div><b>Real blockchain boundary</b><span>KAIRO stores sensitive evidence off-chain. Fabric receives only the proof metadata required to independently attest that a specific evidence fingerprint and custody event were anchored. If Fabric is unavailable, KAIRO never fabricates a successful transaction.</span></div></div></>
+}
+
 function Audit(){
  const [items,setItems]=useState([]),[error,setError]=useState(""),[loading,setLoading]=useState(true),[selected,setSelected]=useState(null);
  async function load(){setLoading(true);setError("");try{setItems(await api.audit())}catch(e){setError(e.message)}finally{setLoading(false)}}
@@ -276,7 +397,7 @@ function App(){
  useEffect(()=>{ if(user) localStorage.setItem("kairo_page", page); },[user,page]);
  if(checking)return <div className="splash"><Logo/><span>Establishing secure session…</span></div>;
  if(!user)return <Login onLogin={completeLogin}/>;
- const content=selected?<CaseDetail id={selected} user={user} onBack={()=>setSelected(null)}/>:page==="overview"?<Overview user={user} setPage={setPage}/>:page==="cases"?<Cases setSelected={setSelected} user={user} onCreate={()=>setShowCaseCreate(true)}/>:page==="search"?<SearchPage setSelected={setSelected}/>:page==="integrity"?<Integrity/>:page==="trust"?<TrustLedger/>:page==="security"?<Security user={user}/>:page==="incidents"?<Incidents user={user}/>:page==="sharing"?<Sharing/>:page==="signatures"?<Signatures/>:page==="governance"?<Governance/>:page==="forensics"?<ForensicExport/>:user.role==="AUDITOR"?<Audit/>:<Overview user={user} setPage={setPage}/>;
+ const content=selected?<CaseDetail id={selected} user={user} onBack={()=>setSelected(null)}/>:page==="overview"?<Overview user={user} setPage={setPage}/>:page==="cases"?<Cases setSelected={setSelected} user={user} onCreate={()=>setShowCaseCreate(true)}/>:page==="search"?<SearchPage setSelected={setSelected}/>:page==="integrity"?<Integrity/>:page==="intelligence"?<Intelligence user={user}/>:page==="trust"?<TrustLedger onProof={()=>setPage("blockchain-proof")}/>:page==="blockchain-proof"?<BlockchainProof onBack={()=>setPage("trust")}/>:page==="security"?<Security user={user} onBack={()=>setPage("incidents")}/>:page==="incidents"?<Incidents user={user} onValidation={()=>setPage("security")}/>:page==="sharing"?<Sharing/>:page==="signatures"?<Signatures/>:page==="governance"?<Governance/>:page==="forensics"?<ForensicExport/>:user.role==="AUDITOR"?<Audit/>:<Overview user={user} setPage={setPage}/>;
  return <Shell user={user} page={selected?"case":page} setPage={p=>{setSelected(null);setPage(p);localStorage.setItem("kairo_page",p)}} onLogout={logout}>{content}{showCaseCreate&&<CaseCreateModal onClose={()=>setShowCaseCreate(false)} onCreated={id=>{setShowCaseCreate(false);setSelected(id);setPage("cases")}}/>}</Shell>
 }
 

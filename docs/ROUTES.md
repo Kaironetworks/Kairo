@@ -20,8 +20,8 @@ Application:
 /app/evidence/:evidenceId/custody
 /app/trust
 /app/audit
-/app/security
-/app/security/lab
+/app/security (proof console; not in primary navigation)
+/app/proof/blockchain (live Fabric proof console; not in primary navigation)
 /app/search
 
 Future:

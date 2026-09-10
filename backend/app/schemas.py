@@ -44,6 +44,13 @@ class DocumentOut(BaseModel):
     document_type: str
     classification: str
     current_version: int
+    description: str = ""
+    ai_classification: str = ""
+    ai_confidence: float = 0.0
+    extraction_method: str = "NONE"
+    redaction_count: int = 0
+    sealed: bool = False
+    sealed_version: int | None = None
     created_at: datetime
 
 class VersionOut(BaseModel):

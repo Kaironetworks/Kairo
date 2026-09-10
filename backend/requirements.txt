@@ -8,3 +8,6 @@ passlib[bcrypt]==1.7.4
 boto3==1.40.15
 python-dotenv==1.1.1
 pydantic-settings==2.10.1
+pypdf==5.9.0
+Pillow==11.3.0
+pytesseract==0.3.13

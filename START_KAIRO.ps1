@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Write-Host "KAIRO :: secure local environment" -ForegroundColor Cyan
 
-foreach ($tool in @("docker","node","npm","python")) {
+foreach ($tool in @("docker","node","npm")) {
   if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "$tool is required." }
 }
 
@@ -12,7 +12,10 @@ $backend = Join-Path $Root "backend"
 $venv = Join-Path $backend ".venv\Scripts\python.exe"
 if (-not (Test-Path $venv)) {
   Write-Host "Creating backend virtual environment..." -ForegroundColor Yellow
-  python -m venv (Join-Path $backend ".venv")
+  $pythonLauncher = Get-Command py -ErrorAction SilentlyContinue
+  if ($pythonLauncher) { & $pythonLauncher.Source -3 -m venv (Join-Path $backend ".venv") }
+  elseif (Get-Command python -ErrorAction SilentlyContinue) { python -m venv (Join-Path $backend ".venv") }
+  else { throw "Python is required only for first-time .venv creation. Install Python or create backend\.venv once." }
   & $venv -m pip install -r (Join-Path $backend "requirements.txt")
 }
 
